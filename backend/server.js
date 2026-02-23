@@ -8,13 +8,13 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use(express.static("frontend"));
 
 // Initialize database
 initDatabase();
 
-// --- CLIENT ROUTES ---
+// --- Enhanced Client Routes ---
 app.get("/api/clients", async (req, res) => {
   try {
     const result = await pool.query(
@@ -26,28 +26,14 @@ app.get("/api/clients", async (req, res) => {
   }
 });
 
-app.get("/api/clients/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      "SELECT * FROM clients WHERE id = $1 AND is_active = true",
-      [id],
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Client not found" });
-    }
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 app.post("/api/clients", async (req, res) => {
   try {
     const { name, code, address, phone, email } = req.body;
+    // Sanitize input to prevent special character issues
+    const sanitizedCode = code.replace(/[^a-zA-Z0-9\-_]/g, "");
     const result = await pool.query(
       "INSERT INTO clients (name, code, address, phone, email) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [name, code, address, phone, email],
+      [name, sanitizedCode, address, phone, email],
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -55,44 +41,11 @@ app.post("/api/clients", async (req, res) => {
   }
 });
 
-app.put("/api/clients/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, code, address, phone, email } = req.body;
-    const result = await pool.query(
-      "UPDATE clients SET name = $1, code = $2, address = $3, phone = $4, email = $5, updated_at = NOW() WHERE id = $6 RETURNING *",
-      [name, code, address, phone, email, id],
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Client not found" });
-    }
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-app.delete("/api/clients/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      "UPDATE clients SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING *",
-      [id],
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Client not found" });
-    }
-    res.json({ message: "Client deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// --- PRODUCT ROUTES ---
+// --- Enhanced Product Routes with General Price ---
 app.get("/api/products", async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM products WHERE is_active = true ORDER BY name",
+      "SELECT * FROM products WHERE is_active = true ORDER BY id",
     );
     res.json(result.rows);
   } catch (error) {
@@ -102,12 +55,28 @@ app.get("/api/products", async (req, res) => {
 
 app.post("/api/products", async (req, res) => {
   try {
-    const { name, code, unit } = req.body;
-    const result = await pool.query(
+    const { name, code, unit, general_price } = req.body;
+    // Sanitize inputs
+    const sanitizedCode = code.replace(/[^a-zA-Z0-9\-_]/g, "");
+    const sanitizedUnit = unit || "T";
+
+    // Insert product
+    const productResult = await pool.query(
       "INSERT INTO products (name, code, unit) VALUES ($1, $2, $3) RETURNING *",
-      [name, code, unit || "m³"],
+      [name, sanitizedCode, sanitizedUnit],
     );
-    res.status(201).json(result.rows[0]);
+
+    const product = productResult.rows[0];
+
+    // Set general price if provided
+    if (general_price && general_price > 0) {
+      await pool.query(
+        "INSERT INTO general_prices (product_id, price) VALUES ($1, $2) ON CONFLICT (product_id) DO UPDATE SET price = $2, updated_at = NOW()",
+        [product.id, general_price],
+      );
+    }
+
+    res.status(201).json(product);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -116,212 +85,52 @@ app.post("/api/products", async (req, res) => {
 app.put("/api/products/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, code, unit } = req.body;
-    const result = await pool.query(
+    const { name, code, unit, general_price } = req.body;
+    // Sanitize inputs
+    const sanitizedCode = code.replace(/[^a-zA-Z0-9\-_]/g, "");
+    const sanitizedUnit = unit || "T";
+
+    // Update product
+    const productResult = await pool.query(
       "UPDATE products SET name = $1, code = $2, unit = $3, updated_at = NOW() WHERE id = $4 RETURNING *",
-      [name, code, unit, id],
+      [name, sanitizedCode, sanitizedUnit, id],
     );
-    if (result.rows.length === 0) {
+
+    if (productResult.rows.length === 0) {
       return res.status(404).json({ error: "Product not found" });
     }
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
 
-app.delete("/api/products/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      "UPDATE products SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING *",
-      [id],
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Product not found" });
-    }
-    res.json({ message: "Product deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+    const product = productResult.rows[0];
 
-// --- PRICING ROUTES ---
-app.get("/api/prices/client/:clientId", async (req, res) => {
-  try {
-    const { clientId } = req.params;
-    const result = await pool.query(
-      `
-      SELECT cp.*, p.name as product_name 
-      FROM client_prices cp 
-      JOIN products p ON cp.product_id = p.id 
-      WHERE cp.client_id = $1 AND cp.is_active = true 
-      ORDER BY p.name
-    `,
-      [clientId],
-    );
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/api/prices", async (req, res) => {
-  try {
-    const { client_id, product_id, price, valid_from, valid_to } = req.body;
-    const result = await pool.query(
-      `
-      INSERT INTO client_prices (client_id, product_id, price, valid_from, valid_to) 
-      VALUES ($1, $2, $3, $4, $5) 
-      ON CONFLICT (client_id, product_id, valid_from) 
-      DO UPDATE SET price = $3, valid_to = $5, updated_at = NOW()
-      RETURNING *
-    `,
-      [client_id, product_id, price, valid_from, valid_to],
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// --- CONSUMPTION ROUTES ---
-app.get("/api/consumption/:date", async (req, res) => {
-  try {
-    const { date } = req.params;
-    const result = await pool.query(
-      `
-      SELECT ce.*, c.name as client_name, p.name as product_name
-      FROM consumption_entries ce
-      JOIN clients c ON ce.client_id = c.id
-      JOIN products p ON ce.product_id = p.id
-      WHERE ce.entry_date = $1
-      ORDER BY c.name, p.name
-    `,
-      [date],
-    );
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Add this after your existing routes:
-
-// --- PAYMENT TYPES ---
-app.get("/api/payment-types", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT * FROM payment_types ORDER BY name",
-    );
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// --- GET PRODUCT BY ID ---
-app.get("/api/products/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      "SELECT * FROM products WHERE id = $1 AND is_active = true",
-      [id],
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Product not found" });
-    }
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// --- GET CLIENT PRICE FOR SPECIFIC DATE ---
-app.get(
-  "/api/prices/client/:clientId/product/:productId/date/:date",
-  async (req, res) => {
-    try {
-      const { clientId, productId, date } = req.params;
-
-      // First check for client-specific price
-      let result = await pool.query(
-        `
-      SELECT price FROM client_prices 
-      WHERE client_id = $1 AND product_id = $2 
-      AND valid_from <= $3 
-      AND (valid_to IS NULL OR valid_to >= $3)
-      AND is_active = true
-      ORDER BY valid_from DESC
-      LIMIT 1
-    `,
-        [clientId, productId, date],
-      );
-
-      if (result.rows.length > 0) {
-        return res.json(result.rows[0]);
+    // Update general price if provided
+    if (general_price !== undefined && general_price >= 0) {
+      if (general_price > 0) {
+        await pool.query(
+          "INSERT INTO general_prices (product_id, price) VALUES ($1, $2) ON CONFLICT (product_id) DO UPDATE SET price = $2, updated_at = NOW()",
+          [product.id, general_price],
+        );
+      } else {
+        // Remove general price if set to 0 or negative
+        await pool.query("DELETE FROM general_prices WHERE product_id = $1", [
+          product.id,
+        ]);
       }
-
-      // If no client-specific price, check general price
-      result = await pool.query(
-        `
-      SELECT price FROM client_prices 
-      WHERE client_id = 0 AND product_id = $2 
-      AND valid_from <= $3 
-      AND (valid_to IS NULL OR valid_to >= $3)
-      AND is_active = true
-      ORDER BY valid_from DESC
-      LIMIT 1
-    `,
-        [clientId, productId, date],
-      );
-
-      if (result.rows.length > 0) {
-        return res.json(result.rows[0]);
-      }
-
-      // No price found
-      res.json({ price: 0 });
-    } catch (error) {
-      res.status(500).json({ error: error.message });
     }
-  },
-);
 
-// --- SET GENERAL PRICE ---
-app.post("/api/general-prices", async (req, res) => {
-  try {
-    const { product_id, price, valid_from, valid_to } = req.body;
-    const result = await pool.query(
-      `
-      INSERT INTO client_prices (client_id, product_id, price, valid_from, valid_to) 
-      VALUES (0, $1, $2, $3, $4) 
-      ON CONFLICT (client_id, product_id, valid_from) 
-      DO UPDATE SET price = $2, valid_to = $4, updated_at = NOW()
-      RETURNING *
-    `,
-      [
-        product_id,
-        price,
-        valid_from || new Date().toISOString().split("T")[0],
-        valid_to,
-      ],
-    );
-    res.status(201).json(result.rows[0]);
+    res.json(product);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-// --- GET GENERAL PRICES ---
+// --- General Prices Routes ---
 app.get("/api/general-prices", async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT cp.*, p.name as product_name 
-      FROM client_prices cp 
-      JOIN products p ON cp.product_id = p.id 
-      WHERE cp.client_id = 0 AND cp.is_active = true 
-      ORDER BY p.name
+      SELECT gp.*, p.name as product_name, p.code as product_code
+      FROM general_prices gp
+      JOIN products p ON gp.product_id = p.id
+      ORDER BY p.id
     `);
     res.json(result.rows);
   } catch (error) {
@@ -329,17 +138,30 @@ app.get("/api/general-prices", async (req, res) => {
   }
 });
 
-// --- PAYMENTS ---
-app.get("/api/payments/client/:clientId", async (req, res) => {
+app.get("/api/general-prices/product/:productId", async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const result = await pool.query(
+      "SELECT * FROM general_prices WHERE product_id = $1",
+      [productId],
+    );
+    res.json(result.rows[0] || { price: 0 });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Client Prices Routes (Simplified) ---
+app.get("/api/client-prices/:clientId", async (req, res) => {
   try {
     const { clientId } = req.params;
     const result = await pool.query(
       `
-      SELECT cp.*, pt.name as payment_type_name
-      FROM client_payments cp
-      JOIN payment_types pt ON cp.payment_type_id = pt.id
+      SELECT cp.*, p.name as product_name
+      FROM client_prices cp
+      JOIN products p ON cp.product_id = p.id
       WHERE cp.client_id = $1
-      ORDER BY cp.payment_date DESC
+      ORDER BY p.id
     `,
       [clientId],
     );
@@ -349,42 +171,52 @@ app.get("/api/payments/client/:clientId", async (req, res) => {
   }
 });
 
-app.post("/api/payments", async (req, res) => {
+app.post("/api/client-prices", async (req, res) => {
   try {
-    const {
-      client_id,
-      payment_date,
-      amount,
-      original_amount,
-      payment_type_id,
-      notes,
-    } = req.body;
+    const { client_id, product_id, price, apply_to_existing } = req.body;
 
-    // Process amount based on payment type
-    let processedAmount = original_amount;
-    if (payment_type_id == 2) {
-      // Check payment type
-      processedAmount = Math.round((original_amount / 1.19) * 100) / 100;
-    }
-
+    // Set client-specific price
     const result = await pool.query(
       `
-      INSERT INTO client_payments (client_id, payment_date, amount, original_amount, payment_type_id, notes)
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+      INSERT INTO client_prices (client_id, product_id, price) 
+      VALUES ($1, $2, $3) 
+      ON CONFLICT (client_id, product_id) 
+      DO UPDATE SET price = $3, updated_at = NOW()
+      RETURNING *
     `,
-      [
-        client_id,
-        payment_date,
-        processedAmount,
-        original_amount,
-        payment_type_id,
-        notes,
-      ],
+      [client_id, product_id, price],
     );
+
+    // Apply to existing entries if requested
+    if (apply_to_existing) {
+      // This would recalculate existing entries - implement as needed
+      console.log("Apply to existing entries requested");
+    }
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// --- Consumption Routes ---
+app.get("/api/consumption/:date", async (req, res) => {
+  try {
+    const { date } = req.params;
+    const result = await pool.query(
+      `
+      SELECT ce.*, c.name as client_name, p.name as product_name, p.unit
+      FROM consumption_entries ce
+      JOIN clients c ON ce.client_id = c.id
+      JOIN products p ON ce.product_id = p.id
+      WHERE ce.entry_date = $1
+      ORDER BY c.name, p.id
+    `,
+      [date],
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -399,24 +231,25 @@ app.post("/api/consumption", async (req, res) => {
       notes,
     } = req.body;
 
-    // Get next sequence number if not provided
+    // Sanitize inputs
+    const sanitizedNotes = notes ? notes.replace(/[<>'"&]/g, "") : null;
+
+    // Generate sequence number if not provided
     let seqNumber = sequence_number;
     if (!seqNumber) {
-      const settingsResult = await pool.query(
-        "SELECT setting_value as current_number, (SELECT setting_value FROM system_settings WHERE setting_key = 'current_year') as year FROM system_settings WHERE setting_key = 'sequence_start_number'",
+      const dateObj = new Date();
+      const year = dateObj.getFullYear();
+      const countResult = await pool.query(
+        "SELECT COUNT(*) as count FROM consumption_entries WHERE EXTRACT(YEAR FROM entry_date) = $1",
+        [year],
       );
-      const { current_number, year } = settingsResult.rows[0];
-      seqNumber = `${String(current_number).padStart(3, "0")}/${year}`;
-
-      // Update sequence number
-      await pool.query(
-        "UPDATE system_settings SET setting_value = (setting_value::INTEGER + 1)::VARCHAR WHERE setting_key = 'sequence_start_number'",
-      );
+      const count = parseInt(countResult.rows[0].count) + 1;
+      seqNumber = `${String(count).padStart(3, "0")}/${year}`;
     }
 
     const result = await pool.query(
       "INSERT INTO consumption_entries (entry_date, client_id, product_id, quantity, sequence_number, notes) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-      [entry_date, client_id, product_id, quantity, seqNumber, notes],
+      [entry_date, client_id, product_id, quantity, seqNumber, sanitizedNotes],
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -424,16 +257,152 @@ app.post("/api/consumption", async (req, res) => {
   }
 });
 
-// Get next sequence number
+// --- Reports Routes ---
+app.get("/api/reports/client/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const { start_date, end_date, group_by } = req.query;
+
+    let query, params;
+
+    if (group_by === "daily") {
+      // Daily detailed report
+      query = `
+        SELECT 
+          ce.entry_date,
+          p.name as product_name,
+          p.unit,
+          ce.quantity,
+          COALESCE(cp.price, gp.price, 0) as unit_price,
+          ce.quantity * COALESCE(cp.price, gp.price, 0) as total_amount,
+          ce.notes
+        FROM consumption_entries ce
+        JOIN products p ON ce.product_id = p.id
+        LEFT JOIN client_prices cp ON cp.client_id = ce.client_id AND cp.product_id = ce.product_id
+        LEFT JOIN general_prices gp ON gp.product_id = ce.product_id
+        WHERE ce.client_id = $1 
+        AND ce.entry_date BETWEEN $2 AND $3
+        ORDER BY ce.entry_date, p.id
+      `;
+      params = [clientId, start_date, end_date];
+    } else {
+      // Monthly summary report
+      query = `
+        SELECT 
+          DATE_TRUNC('month', ce.entry_date) as month,
+          p.name as product_name,
+          p.unit,
+          SUM(ce.quantity) as total_quantity,
+          COALESCE(cp.price, gp.price, 0) as unit_price,
+          SUM(ce.quantity) * COALESCE(cp.price, gp.price, 0) as total_amount
+        FROM consumption_entries ce
+        JOIN products p ON ce.product_id = p.id
+        LEFT JOIN client_prices cp ON cp.client_id = ce.client_id AND cp.product_id = ce.product_id
+        LEFT JOIN general_prices gp ON gp.product_id = ce.product_id
+        WHERE ce.client_id = $1 
+        AND ce.entry_date BETWEEN $2 AND $3
+        GROUP BY DATE_TRUNC('month', ce.entry_date), p.name, p.unit, cp.price, gp.price
+        ORDER BY month, p.id
+      `;
+      params = [clientId, start_date, end_date];
+    }
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/reports/client-summary/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const { start_date, end_date } = req.query;
+
+    // Get total consumption value
+    const consumptionResult = await pool.query(
+      `
+      SELECT 
+        SUM(ce.quantity * COALESCE(cp.price, gp.price, 0)) as total_consumption_value
+      FROM consumption_entries ce
+      LEFT JOIN client_prices cp ON cp.client_id = ce.client_id AND cp.product_id = ce.product_id
+      LEFT JOIN general_prices gp ON gp.product_id = ce.product_id
+      WHERE ce.client_id = $1 
+      AND ce.entry_date BETWEEN $2 AND $3
+    `,
+      [clientId, start_date, end_date],
+    );
+
+    // Get total payments
+    const paymentsResult = await pool.query(
+      `
+      SELECT SUM(amount) as total_payments
+      FROM client_payments
+      WHERE client_id = $1 
+      AND payment_date BETWEEN $2 AND $3
+    `,
+      [clientId, start_date, end_date],
+    );
+
+    const totalConsumption = parseFloat(
+      consumptionResult.rows[0]?.total_consumption_value || 0,
+    );
+    const totalPayments = parseFloat(
+      paymentsResult.rows[0]?.total_payments || 0,
+    );
+    const balance = totalPayments - totalConsumption;
+
+    res.json({
+      total_consumption_value: totalConsumption,
+      total_payments: totalPayments,
+      balance: balance,
+      status: balance >= 0 ? "Credit" : "Debt",
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/reports/payments/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const { start_date, end_date } = req.query;
+
+    const result = await pool.query(
+      `
+      SELECT 
+        cp.payment_date,
+        cp.amount,
+        cp.original_amount,
+        pt.name as payment_type,
+        cp.notes
+      FROM client_payments cp
+      JOIN payment_types pt ON cp.payment_type_id = pt.id
+      WHERE cp.client_id = $1 
+      AND cp.payment_date BETWEEN $2 AND $3
+      ORDER BY cp.payment_date DESC
+    `,
+      [clientId, start_date, end_date],
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Utility Routes ---
 app.get("/api/sequence/next", async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT 
-        LPAD(setting_value, 3, '0') || '/' || (SELECT setting_value FROM system_settings WHERE setting_key = 'current_year') as next_sequence
-      FROM system_settings 
-      WHERE setting_key = 'sequence_start_number'
-    `);
-    res.json({ sequence_number: result.rows[0].next_sequence });
+    const dateObj = new Date();
+    const year = dateObj.getFullYear();
+    const countResult = await pool.query(
+      "SELECT COUNT(*) as count FROM consumption_entries WHERE EXTRACT(YEAR FROM entry_date) = $1",
+      [year],
+    );
+    const count = parseInt(countResult.rows[0].count) + 1;
+    const sequence_number = `${String(count).padStart(3, "0")}/${year}`;
+    res.json({ sequence_number });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -447,19 +416,15 @@ app.get("/", (req, res) => {
     <ul>
       <li>GET /api/clients</li>
       <li>POST /api/clients</li>
-      <li>GET /api/clients/:id</li>
-      <li>PUT /api/clients/:id</li>
-      <li>DELETE /api/clients/:id</li>
       <li>GET /api/products</li>
       <li>POST /api/products</li>
-      <li>GET /api/products/:id</li>
-      <li>PUT /api/products/:id</li>
-      <li>DELETE /api/products/:id</li>
-      <li>GET /api/prices/client/:clientId</li>
-      <li>POST /api/prices</li>
+      <li>GET /api/general-prices</li>
+      <li>POST /api/client-prices</li>
       <li>GET /api/consumption/:date</li>
       <li>POST /api/consumption</li>
-      <li>GET /api/sequence/next</li>
+      <li>GET /api/reports/client/:clientId?start_date=&end_date=&group_by=daily|monthly</li>
+      <li>GET /api/reports/client-summary/:clientId?start_date=&end_date=</li>
+      <li>GET /api/reports/payments/:clientId?start_date=&end_date=</li>
     </ul>
   `);
 });

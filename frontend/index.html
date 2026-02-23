@@ -272,6 +272,49 @@
       </div>
     </div>
 
+    <!-- Add to your HTML tabs -->
+    <div id="reports" class="tab-content">
+      <h2>Reports</h2>
+
+      <div style="margin-bottom: 20px">
+        <select id="reportClientId" required>
+          <option value="">Select Client</option>
+        </select>
+        <input type="date" id="reportStartDate" required />
+        <input type="date" id="reportEndDate" required />
+        <select id="reportGroupBy">
+          <option value="daily">Daily Details</option>
+          <option value="monthly">Monthly Summary</option>
+        </select>
+        <button onclick="generateClientReport()">Generate Report</button>
+      </div>
+
+      <div id="reportOutput">
+        <!-- Report will be displayed here -->
+      </div>
+    </div>
+
+    <!-- Update your product form -->
+    <form id="productForm">
+      <input type="hidden" id="productId" />
+      <input type="text" id="productName" placeholder="Product Name" required />
+      <input type="text" id="productCode" placeholder="Product Code" required />
+      <input
+        type="number"
+        id="productGeneralPrice"
+        placeholder="General Price"
+        step="0.01"
+      />
+      <input
+        type="text"
+        id="productUnit"
+        placeholder="Unit (default: T)"
+        value="T"
+      />
+      <button type="submit">Save Product</button>
+      <button type="button" onclick="clearProductForm()">Clear</button>
+    </form>
+
     <script>
       // Base URL for API
       const API_BASE = "/api";
@@ -820,6 +863,165 @@
       }
 
       // Update the product form submit handler
+      document
+        .getElementById("productForm")
+        .removeEventListener("submit", saveProduct);
+      document
+        .getElementById("productForm")
+        .addEventListener("submit", saveProductWithGeneralPrice);
+
+      // Add these functions to your existing frontend script
+
+      // Load general prices
+      async function loadGeneralPrices() {
+        try {
+          const response = await fetch(`${API_BASE}/general-prices`);
+          const prices = await response.json();
+          console.log("General prices loaded:", prices);
+          return prices;
+        } catch (error) {
+          console.error("Error loading general prices:", error);
+          return [];
+        }
+      }
+
+      // Get general price for product
+      async function getGeneralPrice(productId) {
+        try {
+          const response = await fetch(
+            `${API_BASE}/general-prices/product/${productId}`,
+          );
+          const priceData = await response.json();
+          return priceData.price || 0;
+        } catch (error) {
+          console.error("Error getting general price:", error);
+          return 0;
+        }
+      }
+
+      // Save product with general price
+      async function saveProductWithGeneralPrice(event) {
+        event.preventDefault();
+        const id = document.getElementById("productId").value;
+        const productData = {
+          name: document.getElementById("productName").value,
+          code: document.getElementById("productCode").value,
+          unit: document.getElementById("productUnit").value || "T",
+          general_price:
+            parseFloat(document.getElementById("productGeneralPrice").value) ||
+            0,
+        };
+
+        try {
+          const method = id ? "PUT" : "POST";
+          const url = id
+            ? `${API_BASE}/products/${id}`
+            : `${API_BASE}/products`;
+
+          const response = await fetch(url, {
+            method: method,
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(productData),
+          });
+
+          if (response.ok) {
+            clearProductForm();
+            loadProducts();
+            alert("Product saved successfully with general price!");
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error saving product: " + error.message);
+        }
+      }
+
+      // Generate client report
+      async function generateClientReport() {
+        const clientId = document.getElementById("reportClientId").value;
+        const startDate = document.getElementById("reportStartDate").value;
+        const endDate = document.getElementById("reportEndDate").value;
+        const groupBy = document.getElementById("reportGroupBy").value;
+
+        if (!clientId || !startDate || !endDate) {
+          alert("Please fill all report parameters");
+          return;
+        }
+
+        try {
+          // Get detailed consumption report
+          const consumptionResponse = await fetch(
+            `${API_BASE}/reports/client/${clientId}?start_date=${startDate}&end_date=${endDate}&group_by=${groupBy}`,
+          );
+          const consumptionData = await consumptionResponse.json();
+
+          // Get summary
+          const summaryResponse = await fetch(
+            `${API_BASE}/reports/client-summary/${clientId}?start_date=${startDate}&end_date=${endDate}`,
+          );
+          const summaryData = await summaryResponse.json();
+
+          // Get payments
+          const paymentsResponse = await fetch(
+            `${API_BASE}/reports/payments/${clientId}?start_date=${startDate}&end_date=${endDate}`,
+          );
+          const paymentsData = await paymentsResponse.json();
+
+          // Display report (you can create a proper report view)
+          displayReport(
+            consumptionData,
+            summaryData,
+            paymentsData,
+            clientId,
+            startDate,
+            endDate,
+          );
+        } catch (error) {
+          alert("Error generating report: " + error.message);
+        }
+      }
+
+      function displayReport(
+        consumptionData,
+        summaryData,
+        paymentsData,
+        clientId,
+        startDate,
+        endDate,
+      ) {
+        // Create report display logic here
+        console.log("Report Data:", {
+          consumptionData,
+          summaryData,
+          paymentsData,
+        });
+        alert(
+          `Report generated!\nTotal Consumption: ${summaryData.total_consumption_value}\nTotal Payments: ${summaryData.total_payments}\nBalance: ${summaryData.balance}`,
+        );
+      }
+
+      // Update product form to include general price field
+      function updateProductForm() {
+        const form = document.getElementById("productForm");
+        if (!document.getElementById("productGeneralPrice")) {
+          const generalPriceInput = document.createElement("input");
+          generalPriceInput.type = "number";
+          generalPriceInput.id = "productGeneralPrice";
+          generalPriceInput.placeholder = "General Price (optional)";
+          generalPriceInput.step = "0.01";
+          form.insertBefore(generalPriceInput, form.children[3]); // Insert before unit field
+        }
+      }
+
+      // Call this when page loads
+      document.addEventListener("DOMContentLoaded", function () {
+        updateProductForm();
+      });
+
+      // Update product form submit handler
       document
         .getElementById("productForm")
         .removeEventListener("submit", saveProduct);
