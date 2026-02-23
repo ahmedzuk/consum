@@ -436,16 +436,31 @@
         document.getElementById("alertMsg").textContent = msg;
         overlay.style.display = "flex";
       }
-      // override native alert to use modal
+      // override native alert and confirm to use modal
       window.alert = showAlert;
+      window.confirm = function(msg) {
+        return new Promise((resolve) => {
+          showAlert(msg);
+          const okBtn = document.querySelector("#alertBox button");
+          const handler = () => {
+            okBtn.removeEventListener("click", handler);
+            resolve(true);
+          };
+          okBtn.addEventListener("click", handler);
+        });
+      };
+      // helper to wrap confirm sync usage
+      async function confirmSync(msg) {
+        // window.confirm returns Promise now
+        const result = await window.confirm(msg);
+        return result;
+      }
 
       // TEMPORARY: Function to reset the database (Development Only)
       async function resetDatabase() {
-        if (
-          !confirm(
-            "Are you sure you want to reset the database? This will delete ALL data.",
-          )
-        )
+        if (!(await confirmSync(
+            "Are you sure you want to reset the database? This will delete ALL data."
+          )))
           return;
         document.getElementById("resetStatus").textContent = "Resetting...";
         try {
@@ -658,7 +673,7 @@
       }
 
       async function deleteClient(id) {
-        if (confirm("Are you sure you want to delete this client?")) {
+        if (await confirmSync("Are you sure you want to delete this client?")) {
           try {
             const response = await fetch(`${API_BASE}/clients/${id}`, {
               method: "DELETE",
@@ -755,7 +770,7 @@
       }
 
       async function deleteProduct(id) {
-        if (confirm("Are you sure you want to delete this product?")) {
+        if (await confirmSync("Are you sure you want to delete this product?")) {
           try {
             const response = await fetch(`${API_BASE}/products/${id}`, {
               method: "DELETE",
@@ -1242,13 +1257,19 @@
 
       async function deleteConsumptionEntry(id) {
         if (
-          confirm("Are you sure you want to delete this consumption entry?")
+          await confirmSync("Are you sure you want to delete this consumption entry?")
         ) {
           try {
-            // You'll need to add a DELETE endpoint for consumption entries
-            alert(
-              "Delete functionality needs to be implemented on the backend",
-            );
+            const response = await fetch(`${API_BASE}/consumption/${id}`, {
+              method: "DELETE",
+            });
+            if (response.ok) {
+              loadConsumptionEntries();
+              alert("Entry deleted");
+            } else {
+              const text = await response.text();
+              alert("Error deleting entry: " + text);
+            }
           } catch (error) {
             alert("Error deleting consumption entry: " + error.message);
           }

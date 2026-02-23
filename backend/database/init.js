@@ -76,6 +76,7 @@ const initDatabase = async () => {
         total_amount DECIMAL(10,2) NOT NULL, -- Store calculated total
         sequence_number VARCHAR(20),
         notes TEXT,
+        is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );

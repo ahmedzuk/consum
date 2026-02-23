@@ -74,11 +74,30 @@ app.post("/api/clients", async (req, res) => {
     const { name, code, address, phone, email } = req.body;
     // Sanitize input to prevent special character issues
     const sanitizedCode = code.replace(/[^a-zA-Z0-9\-_]/g, "");
-    const result = await pool.query(
-      "INSERT INTO clients (name, code, address, phone, email) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [name, sanitizedCode, address, phone, email],
+
+    // look for existing inactive client with same code or name
+    const existing = await pool.query(
+      "SELECT * FROM clients WHERE (code = $1 OR name = $2) AND is_active = false",
+      [sanitizedCode, name],
     );
-    res.status(201).json(result.rows[0]);
+    let client;
+    if (existing.rows.length > 0) {
+      // reactivate and update
+      const id = existing.rows[0].id;
+      const upd = await pool.query(
+        "UPDATE clients SET name = $1, code = $2, address=$3, phone=$4, email=$5, is_active = true, updated_at = NOW() WHERE id = $6 RETURNING *",
+        [name, sanitizedCode, address, phone, email, id],
+      );
+      client = upd.rows[0];
+    } else {
+      const result = await pool.query(
+        "INSERT INTO clients (name, code, address, phone, email) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+        [name, sanitizedCode, address, phone, email],
+      );
+      client = result.rows[0];
+    }
+
+    res.status(201).json(client);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -359,22 +378,55 @@ app.post("/api/consumption", async (req, res) => {
       seqNumber = `${String(count).padStart(3, "0")}/${year}`;
     }
 
-    const result = await pool.query(
-      "INSERT INTO consumption_entries (entry_date, client_id, product_id, quantity, unit_price, total_amount, sequence_number, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
-      [
-        entry_date,
-        client_id,
-        product_id,
-        quantity,
-        uprice,
-        tamount,
-        seqNumber,
-        sanitizedNotes,
-      ],
+    // check for inactive duplicate
+    const existing = await pool.query(
+      "SELECT * FROM consumption_entries WHERE entry_date=$1 AND client_id=$2 AND product_id=$3 AND is_active=false",
+      [entry_date, client_id, product_id],
     );
+    let result;
+    if (existing.rows.length > 0) {
+      const id = existing.rows[0].id;
+      result = await pool.query(
+        `UPDATE consumption_entries
+         SET quantity=$1, unit_price=$2, total_amount=$3, sequence_number=$4, notes=$5, is_active=true, updated_at=NOW()
+         WHERE id=$6 RETURNING *`,
+        [quantity, uprice, tamount, seqNumber, sanitizedNotes, id],
+      );
+    } else {
+      result = await pool.query(
+        "INSERT INTO consumption_entries (entry_date, client_id, product_id, quantity, unit_price, total_amount, sequence_number, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+        [
+          entry_date,
+          client_id,
+          product_id,
+          quantity,
+          uprice,
+          tamount,
+          seqNumber,
+          sanitizedNotes,
+        ],
+      );
+    }
     res.status(201).json(result.rows[0]);
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// soft-delete consumption entry
+app.delete("/api/consumption/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "UPDATE consumption_entries SET is_active=false, updated_at=NOW() WHERE id=$1 RETURNING *",
+      [id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Entry not found" });
+    }
+    res.json({ message: "Entry deleted" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
