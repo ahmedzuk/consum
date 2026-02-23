@@ -176,6 +176,12 @@
       <!-- Clients Tab -->
       <div id="clients" class="tab-content active">
         <h2>Clients Management</h2>
+        <input
+          type="text"
+          id="clientsSearch"
+          placeholder="Search clients..."
+          style="margin-bottom: 10px; padding: 6px; width: 30%"
+        />
         <form id="clientForm">
           <select id="clientPricingSet" required style="margin-bottom: 10px">
             <option value="">Select Pricing Set</option>
@@ -218,6 +224,12 @@
       <!-- Products Tab -->
       <div id="products" class="tab-content">
         <h2>Products Management</h2>
+        <input
+          type="text"
+          id="productsSearch"
+          placeholder="Search products..."
+          style="margin-bottom: 10px; padding: 6px; width: 30%"
+        />
         <form id="productForm">
           <input type="hidden" id="productId" />
           <input
@@ -258,6 +270,12 @@
       <!-- Pricing Tab -->
       <div id="pricing" class="tab-content">
         <h2>Client Pricing</h2>
+        <input
+          type="text"
+          id="pricesSearch"
+          placeholder="Search prices..."
+          style="margin-bottom: 10px; padding: 6px; width: 30%"
+        />
         <select id="pricingClientId" onchange="loadClientPrices()">
           <option value="">Select Client</option>
         </select>
@@ -359,6 +377,9 @@
           <option value="monthly">Monthly Summary</option>
         </select>
         <button onclick="generateClientReport()">Generate Report</button>
+        <button onclick="exportReportCSV()" style="margin-left: 10px">
+          Export CSV
+        </button>
       </div>
 
       <div id="reportOutput">
@@ -438,6 +459,7 @@
           </thead>
           <tbody></tbody>
         </table>
+        <!-- save-all button appended by JS -->
       </div>
 
       <!-- Client Price Assignment -->
@@ -446,7 +468,7 @@
         <select id="assignClientId">
           <option value="">Select Client</option>
         </select>
-        <select id="priceCategorySelect">
+        <select id="assignCategorySelect">
           <option value="">Select Price Category</option>
         </select>
         <button onclick="assignClientToCategory()">Assign Client</button>
@@ -823,12 +845,20 @@
           const clients = await response.json();
           const select = document.getElementById("pricingClientId");
           select.innerHTML = '<option value="">Select Client</option>';
+          const assignSelect = document.getElementById("assignClientId");
+          if (assignSelect) {
+            assignSelect.innerHTML = '<option value="">Select Client</option>';
+          }
 
           clients.forEach((client) => {
             const option = document.createElement("option");
             option.value = client.id;
             option.textContent = client.name;
             select.appendChild(option);
+            if (assignSelect) {
+              const opt2 = option.cloneNode(true);
+              assignSelect.appendChild(opt2);
+            }
           });
         } catch (error) {
           console.error("Error loading clients for pricing:", error);
@@ -1239,6 +1269,12 @@
           const paymentsData = await paymentsResponse.json();
 
           // Display report (you can create a proper report view)
+          // save for export
+          lastReportData = {
+            consumption: consumptionData,
+            summary: summaryData,
+            payments: paymentsData,
+          };
           displayReport(
             consumptionData,
             summaryData,
@@ -1332,6 +1368,18 @@
               categorySelect.appendChild(option);
             });
           }
+          // also fill assignment dropdown
+          const assignSelect = document.getElementById("assignCategorySelect");
+          if (assignSelect) {
+            assignSelect.innerHTML =
+              '<option value="">Select Price Category</option>';
+            categories.forEach((cat) => {
+              const option = document.createElement("option");
+              option.value = cat.id;
+              option.textContent = cat.name;
+              assignSelect.appendChild(option);
+            });
+          }
 
           return categories;
         } catch (error) {
@@ -1340,7 +1388,7 @@
         }
       }
 
-      // Load category prices
+      // Load category prices (shows every product)
       async function loadCategoryPrices(categoryId) {
         if (!categoryId) return;
 
@@ -1358,19 +1406,26 @@
               const row = tbody.insertRow();
               row.innerHTML = `
           <td>${price.product_name}</td>
-          <td><input type="number" value="${price.price}" data-id="${price.id}" class="price-input" step="0.01"></td>
-          <td>
-            <button onclick="updateCategoryPrice(${price.id}, this)">Update</button>
-          </td>
+          <td><input type="number" value="${price.price}" data-product-id="${price.product_id}" class="price-input" step="0.01"></td>
         `;
             });
+          }
+          // add save all button if not present
+          if (!document.getElementById("saveAllCategoryPricesBtn")) {
+            const container = document.querySelector("#categoryPricesTable");
+            const btn = document.createElement("button");
+            btn.id = "saveAllCategoryPricesBtn";
+            btn.textContent = "Save All Prices";
+            btn.style.marginTop = "10px";
+            btn.onclick = () => saveAllCategoryPrices(categoryId);
+            container.parentElement.appendChild(btn);
           }
         } catch (error) {
           console.error("Error loading category prices:", error);
         }
       }
 
-      // Update category price
+      // Update category price (single item) - still available but not used
       async function updateCategoryPrice(priceId, buttonElement) {
         const input =
           buttonElement.parentElement.parentElement.querySelector(
@@ -1409,7 +1464,9 @@
       // Assign client to price category
       async function assignClientToCategory() {
         const clientId = document.getElementById("assignClientId").value;
-        const categoryId = document.getElementById("priceCategorySelect").value;
+        const categoryId = document.getElementById(
+          "assignCategorySelect",
+        ).value;
 
         if (!clientId || !categoryId) {
           alert("Please select both client and category");
@@ -1457,6 +1514,35 @@
           }
         } catch (error) {
           console.error("Error loading client assignment:", error);
+        }
+      }
+
+      // Save all category prices at once
+      async function saveAllCategoryPrices(categoryId) {
+        const inputs = document.querySelectorAll(
+          "#categoryPricesTable .price-input",
+        );
+        const prices = [];
+        inputs.forEach((inp) => {
+          const prodId = inp.getAttribute("data-product-id");
+          const val = parseFloat(inp.value) || 0;
+          prices.push({ product_id: prodId, price: val });
+        });
+
+        try {
+          const response = await fetch(`${API_BASE}/prices`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ category_id: categoryId, prices }),
+          });
+          if (response.ok) {
+            alert("All prices saved successfully.");
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (err) {
+          alert("Error saving prices: " + err.message);
         }
       }
 
@@ -1544,10 +1630,64 @@
         .getElementById("consumptionForm")
         .addEventListener("submit", saveConsumptionEntry);
 
+      // basic table filter
+      function filterTable(tableId, searchId) {
+        const input = document.getElementById(searchId);
+        if (!input) return;
+        input.addEventListener("keyup", () => {
+          const filter = input.value.toLowerCase();
+          const rows = document.querySelectorAll(`#${tableId} tbody tr`);
+          rows.forEach((row) => {
+            row.style.display =
+              row.textContent.toLowerCase().indexOf(filter) > -1 ? "" : "none";
+          });
+        });
+      }
+
+      // export last generated report data which is stored globally
+      let lastReportData = null;
+      function exportReportCSV() {
+        if (!lastReportData) {
+          alert("No report to export");
+          return;
+        }
+        // simple CSV from consumption details
+        let csv = "";
+        if (lastReportData.consumption) {
+          csv += "Date,Product,Unit,Quantity,Unit Price,Total,Notes\n";
+          lastReportData.consumption.forEach((r) => {
+            csv += `${r.entry_date},${r.product_name},${r.unit},${r.quantity},${r.unit_price},${r.total_amount},${r.notes || ""}\n`;
+          });
+        }
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "report.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
       // Initialize the application
       document.addEventListener("DOMContentLoaded", function () {
         loadClients();
         loadProducts();
+        filterTable("clientsTable", "clientsSearch");
+        filterTable("productsTable", "productsSearch");
+        // prices search applies after loading prices, attach listener once
+        const priceSearchInput = document.getElementById("pricesSearch");
+        if (priceSearchInput) {
+          priceSearchInput.addEventListener("keyup", () => {
+            const filter = priceSearchInput.value.toLowerCase();
+            const rows = document.querySelectorAll(`#pricesTable tbody tr`);
+            rows.forEach((row) => {
+              row.style.display =
+                row.textContent.toLowerCase().indexOf(filter) > -1
+                  ? ""
+                  : "none";
+            });
+          });
+        }
       });
     </script>
   </body>

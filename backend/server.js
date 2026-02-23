@@ -515,12 +515,17 @@ app.post("/api/prices/recalculate", async (req, res) => {
 app.get("/api/category-prices/:categoryId", async (req, res) => {
   try {
     const { categoryId } = req.params;
+    // return a row for every product, including those without a price set for this category
     const result = await pool.query(
       `
-      SELECT cp.*, p.name as product_name, p.code as product_code
-      FROM category_prices cp
-      JOIN products p ON cp.product_id = p.id
-      WHERE cp.category_id = $1
+      SELECT p.id as product_id,
+             p.name as product_name,
+             p.code as product_code,
+             COALESCE(cp.price, 0) as price,
+             cp.id as category_price_id
+      FROM products p
+      LEFT JOIN category_prices cp
+        ON cp.product_id = p.id AND cp.category_id = $1
       ORDER BY p.id
     `,
       [categoryId],
