@@ -1,10 +1,756 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
-    <title>Consumption Management</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Consumption Management System</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      .tabs {
+        display: flex;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #ddd;
+      }
+      .tab {
+        padding: 10px 20px;
+        cursor: pointer;
+        background: #f0f0f0;
+        border: none;
+        margin-right: 5px;
+        border-radius: 5px 5px 0 0;
+      }
+      .tab.active {
+        background: #007bff;
+        color: white;
+      }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+      form {
+        margin-bottom: 20px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 8px;
+        margin: 5px 0;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      button {
+        background: #007bff;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+      }
+      th {
+        background-color: #f2f2f2;
+      }
+      .delete-btn {
+        background: #dc3545;
+        padding: 5px 10px;
+      }
+      .delete-btn:hover {
+        background: #c82333;
+      }
+    </style>
   </head>
   <body>
-    <h1>Consumption Management System</h1>
-    <p>API is running at /api/*</p>
+    <div class="container">
+      <h1>Consumption Management System</h1>
+
+      <div class="tabs">
+        <button class="tab active" onclick="showTab('clients')">Clients</button>
+        <button class="tab" onclick="showTab('products')">Products</button>
+        <button class="tab" onclick="showTab('pricing')">Pricing</button>
+        <button class="tab" onclick="showTab('consumption')">
+          Consumption
+        </button>
+      </div>
+
+      <!-- Clients Tab -->
+      <div id="clients" class="tab-content active">
+        <h2>Clients Management</h2>
+        <form id="clientForm">
+          <input type="hidden" id="clientId" />
+          <input
+            type="text"
+            id="clientName"
+            placeholder="Client Name"
+            required
+          />
+          <input
+            type="text"
+            id="clientCode"
+            placeholder="Client Code"
+            required
+          />
+          <input type="text" id="clientAddress" placeholder="Address" />
+          <input type="text" id="clientPhone" placeholder="Phone" />
+          <input type="email" id="clientEmail" placeholder="Email" />
+          <button type="submit">Save Client</button>
+          <button type="button" onclick="clearClientForm()">Clear</button>
+        </form>
+
+        <table id="clientsTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Code</th>
+              <th>Phone</th>
+              <th>Email</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Products Tab -->
+      <div id="products" class="tab-content">
+        <h2>Products Management</h2>
+        <form id="productForm">
+          <input type="hidden" id="productId" />
+          <input
+            type="text"
+            id="productName"
+            placeholder="Product Name"
+            required
+          />
+          <input
+            type="text"
+            id="productCode"
+            placeholder="Product Code"
+            required
+          />
+          <input
+            type="text"
+            id="productUnit"
+            placeholder="Unit (default: m³)"
+            value="m³"
+          />
+          <button type="submit">Save Product</button>
+          <button type="button" onclick="clearProductForm()">Clear</button>
+        </form>
+
+        <table id="productsTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Code</th>
+              <th>Unit</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Pricing Tab -->
+      <div id="pricing" class="tab-content">
+        <h2>Client Pricing</h2>
+        <select id="pricingClientId" onchange="loadClientPrices()">
+          <option value="">Select Client</option>
+        </select>
+
+        <form id="pricingForm">
+          <select id="pricingProductId" required>
+            <option value="">Select Product</option>
+          </select>
+          <input
+            type="number"
+            id="pricingPrice"
+            placeholder="Price"
+            step="0.01"
+            required
+          />
+          <input type="date" id="pricingValidFrom" required />
+          <input
+            type="date"
+            id="pricingValidTo"
+            placeholder="Valid To (optional)"
+          />
+          <button type="submit">Set Price</button>
+        </form>
+
+        <table id="pricesTable">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Price</th>
+              <th>Valid From</th>
+              <th>Valid To</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Consumption Tab -->
+      <div id="consumption" class="tab-content">
+        <h2>Daily Consumption Entry</h2>
+        <input
+          type="date"
+          id="consumptionDate"
+          onchange="loadConsumptionEntries()"
+        />
+
+        <form id="consumptionForm">
+          <select id="consumptionClientId" required>
+            <option value="">Select Client</option>
+          </select>
+          <select id="consumptionProductId" required>
+            <option value="">Select Product</option>
+          </select>
+          <input
+            type="number"
+            id="consumptionQuantity"
+            placeholder="Quantity"
+            step="0.001"
+            required
+          />
+          <input
+            type="text"
+            id="consumptionSequence"
+            placeholder="Sequence Number (auto-generated)"
+          />
+          <button type="button" onclick="getNextSequenceNumber()">
+            Get Next Sequence
+          </button>
+          <textarea id="consumptionNotes" placeholder="Notes"></textarea>
+          <button type="submit">Add Entry</button>
+        </form>
+
+        <table id="consumptionTable">
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Product</th>
+              <th>Quantity</th>
+              <th>Sequence</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      // Base URL for API
+      const API_BASE = "http://localhost:3000/api";
+
+      // Tab switching functionality
+      function showTab(tabName) {
+        // Hide all tab contents
+        document.querySelectorAll(".tab-content").forEach((content) => {
+          content.classList.remove("active");
+        });
+
+        // Remove active class from all tabs
+        document.querySelectorAll(".tab").forEach((tab) => {
+          tab.classList.remove("active");
+        });
+
+        // Show selected tab and mark as active
+        document.getElementById(tabName).classList.add("active");
+        event.target.classList.add("active");
+
+        // Load data for the selected tab
+        switch (tabName) {
+          case "clients":
+            loadClients();
+            break;
+          case "products":
+            loadProducts();
+            break;
+          case "pricing":
+            loadClientsForPricing();
+            loadProductsForPricing();
+            break;
+          case "consumption":
+            loadClientsForConsumption();
+            loadProductsForConsumption();
+            document.getElementById("consumptionDate").value = new Date()
+              .toISOString()
+              .split("T")[0];
+            loadConsumptionEntries();
+            break;
+        }
+      }
+
+      // Client Management
+      async function loadClients() {
+        try {
+          const response = await fetch(`${API_BASE}/clients`);
+          const clients = await response.json();
+          const tbody = document.querySelector("#clientsTable tbody");
+          tbody.innerHTML = "";
+
+          clients.forEach((client) => {
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                        <td>${client.name}</td>
+                        <td>${client.code}</td>
+                        <td>${client.phone || ""}</td>
+                        <td>${client.email || ""}</td>
+                        <td>
+                            <button onclick="editClient(${client.id})">Edit</button>
+                            <button class="delete-btn" onclick="deleteClient(${client.id})">Delete</button>
+                        </td>
+                    `;
+          });
+        } catch (error) {
+          console.error("Error loading clients:", error);
+        }
+      }
+
+      async function saveClient(event) {
+        event.preventDefault();
+        const id = document.getElementById("clientId").value;
+        const clientData = {
+          name: document.getElementById("clientName").value,
+          code: document.getElementById("clientCode").value,
+          address: document.getElementById("clientAddress").value,
+          phone: document.getElementById("clientPhone").value,
+          email: document.getElementById("clientEmail").value,
+        };
+
+        try {
+          const method = id ? "PUT" : "POST";
+          const url = id ? `${API_BASE}/clients/${id}` : `${API_BASE}/clients`;
+
+          const response = await fetch(url, {
+            method: method,
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(clientData),
+          });
+
+          if (response.ok) {
+            clearClientForm();
+            loadClients();
+            alert("Client saved successfully!");
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error saving client: " + error.message);
+        }
+      }
+
+      function editClient(id) {
+        fetch(`${API_BASE}/clients/${id}`)
+          .then((response) => response.json())
+          .then((client) => {
+            document.getElementById("clientId").value = client.id;
+            document.getElementById("clientName").value = client.name;
+            document.getElementById("clientCode").value = client.code;
+            document.getElementById("clientAddress").value =
+              client.address || "";
+            document.getElementById("clientPhone").value = client.phone || "";
+            document.getElementById("clientEmail").value = client.email || "";
+          });
+      }
+
+      async function deleteClient(id) {
+        if (confirm("Are you sure you want to delete this client?")) {
+          try {
+            const response = await fetch(`${API_BASE}/clients/${id}`, {
+              method: "DELETE",
+            });
+
+            if (response.ok) {
+              loadClients();
+              alert("Client deleted successfully!");
+            } else {
+              const error = await response.json();
+              alert("Error: " + error.error);
+            }
+          } catch (error) {
+            alert("Error deleting client: " + error.message);
+          }
+        }
+      }
+
+      function clearClientForm() {
+        document.getElementById("clientForm").reset();
+        document.getElementById("clientId").value = "";
+      }
+
+      // Product Management
+      async function loadProducts() {
+        try {
+          const response = await fetch(`${API_BASE}/products`);
+          const products = await response.json();
+          const tbody = document.querySelector("#productsTable tbody");
+          tbody.innerHTML = "";
+
+          products.forEach((product) => {
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                        <td>${product.name}</td>
+                        <td>${product.code}</td>
+                        <td>${product.unit}</td>
+                        <td>
+                            <button onclick="editProduct(${product.id})">Edit</button>
+                            <button class="delete-btn" onclick="deleteProduct(${product.id})">Delete</button>
+                        </td>
+                    `;
+          });
+        } catch (error) {
+          console.error("Error loading products:", error);
+        }
+      }
+
+      async function saveProduct(event) {
+        event.preventDefault();
+        const id = document.getElementById("productId").value;
+        const productData = {
+          name: document.getElementById("productName").value,
+          code: document.getElementById("productCode").value,
+          unit: document.getElementById("productUnit").value,
+        };
+
+        try {
+          const method = id ? "PUT" : "POST";
+          const url = id
+            ? `${API_BASE}/products/${id}`
+            : `${API_BASE}/products`;
+
+          const response = await fetch(url, {
+            method: method,
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(productData),
+          });
+
+          if (response.ok) {
+            clearProductForm();
+            loadProducts();
+            alert("Product saved successfully!");
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error saving product: " + error.message);
+        }
+      }
+
+      function editProduct(id) {
+        fetch(`${API_BASE}/products/${id}`)
+          .then((response) => response.json())
+          .then((product) => {
+            document.getElementById("productId").value = product.id;
+            document.getElementById("productName").value = product.name;
+            document.getElementById("productCode").value = product.code;
+            document.getElementById("productUnit").value = product.unit;
+          });
+      }
+
+      async function deleteProduct(id) {
+        if (confirm("Are you sure you want to delete this product?")) {
+          try {
+            const response = await fetch(`${API_BASE}/products/${id}`, {
+              method: "DELETE",
+            });
+
+            if (response.ok) {
+              loadProducts();
+              alert("Product deleted successfully!");
+            } else {
+              const error = await response.json();
+              alert("Error: " + error.error);
+            }
+          } catch (error) {
+            alert("Error deleting product: " + error.message);
+          }
+        }
+      }
+
+      function clearProductForm() {
+        document.getElementById("productForm").reset();
+        document.getElementById("productId").value = "";
+      }
+
+      // Pricing Management
+      async function loadClientsForPricing() {
+        try {
+          const response = await fetch(`${API_BASE}/clients`);
+          const clients = await response.json();
+          const select = document.getElementById("pricingClientId");
+          select.innerHTML = '<option value="">Select Client</option>';
+
+          clients.forEach((client) => {
+            const option = document.createElement("option");
+            option.value = client.id;
+            option.textContent = client.name;
+            select.appendChild(option);
+          });
+        } catch (error) {
+          console.error("Error loading clients for pricing:", error);
+        }
+      }
+
+      async function loadProductsForPricing() {
+        try {
+          const response = await fetch(`${API_BASE}/products`);
+          const products = await response.json();
+          const select = document.getElementById("pricingProductId");
+          select.innerHTML = '<option value="">Select Product</option>';
+
+          products.forEach((product) => {
+            const option = document.createElement("option");
+            option.value = product.id;
+            option.textContent = product.name;
+            select.appendChild(option);
+          });
+        } catch (error) {
+          console.error("Error loading products for pricing:", error);
+        }
+      }
+
+      async function loadClientPrices() {
+        const clientId = document.getElementById("pricingClientId").value;
+        if (!clientId) {
+          document.querySelector("#pricesTable tbody").innerHTML = "";
+          return;
+        }
+
+        try {
+          const response = await fetch(`${API_BASE}/prices/client/${clientId}`);
+          const prices = await response.json();
+          const tbody = document.querySelector("#pricesTable tbody");
+          tbody.innerHTML = "";
+
+          prices.forEach((price) => {
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                        <td>${price.product_name}</td>
+                        <td>${price.price}</td>
+                        <td>${price.valid_from}</td>
+                        <td>${price.valid_to || "N/A"}</td>
+                    `;
+          });
+        } catch (error) {
+          console.error("Error loading client prices:", error);
+        }
+      }
+
+      async function savePricing(event) {
+        event.preventDefault();
+        const pricingData = {
+          client_id: document.getElementById("pricingClientId").value,
+          product_id: document.getElementById("pricingProductId").value,
+          price: document.getElementById("pricingPrice").value,
+          valid_from: document.getElementById("pricingValidFrom").value,
+          valid_to: document.getElementById("pricingValidTo").value || null,
+        };
+
+        try {
+          const response = await fetch(`${API_BASE}/prices`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(pricingData),
+          });
+
+          if (response.ok) {
+            document.getElementById("pricingForm").reset();
+            loadClientPrices();
+            alert("Price set successfully!");
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error setting price: " + error.message);
+        }
+      }
+
+      // Consumption Management
+      async function loadClientsForConsumption() {
+        try {
+          const response = await fetch(`${API_BASE}/clients`);
+          const clients = await response.json();
+          const select = document.getElementById("consumptionClientId");
+          select.innerHTML = '<option value="">Select Client</option>';
+
+          clients.forEach((client) => {
+            const option = document.createElement("option");
+            option.value = client.id;
+            option.textContent = client.name;
+            select.appendChild(option);
+          });
+        } catch (error) {
+          console.error("Error loading clients for consumption:", error);
+        }
+      }
+
+      async function loadProductsForConsumption() {
+        try {
+          const response = await fetch(`${API_BASE}/products`);
+          const products = await response.json();
+          const select = document.getElementById("consumptionProductId");
+          select.innerHTML = '<option value="">Select Product</option>';
+
+          products.forEach((product) => {
+            const option = document.createElement("option");
+            option.value = product.id;
+            option.textContent = product.name;
+            select.appendChild(option);
+          });
+        } catch (error) {
+          console.error("Error loading products for consumption:", error);
+        }
+      }
+
+      async function getNextSequenceNumber() {
+        try {
+          const response = await fetch(`${API_BASE}/sequence/next`);
+          const data = await response.json();
+          document.getElementById("consumptionSequence").value =
+            data.sequence_number;
+        } catch (error) {
+          console.error("Error getting sequence number:", error);
+        }
+      }
+
+      async function loadConsumptionEntries() {
+        const date = document.getElementById("consumptionDate").value;
+        if (!date) return;
+
+        try {
+          const response = await fetch(`${API_BASE}/consumption/${date}`);
+          const entries = await response.json();
+          const tbody = document.querySelector("#consumptionTable tbody");
+          tbody.innerHTML = "";
+
+          entries.forEach((entry) => {
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                        <td>${entry.client_name}</td>
+                        <td>${entry.product_name}</td>
+                        <td>${entry.quantity}</td>
+                        <td>${entry.sequence_number}</td>
+                        <td>
+                            <button class="delete-btn" onclick="deleteConsumptionEntry(${entry.id})">Delete</button>
+                        </td>
+                    `;
+          });
+        } catch (error) {
+          console.error("Error loading consumption entries:", error);
+        }
+      }
+
+      async function saveConsumptionEntry(event) {
+        event.preventDefault();
+        const consumptionData = {
+          entry_date: document.getElementById("consumptionDate").value,
+          client_id: document.getElementById("consumptionClientId").value,
+          product_id: document.getElementById("consumptionProductId").value,
+          quantity: document.getElementById("consumptionQuantity").value,
+          sequence_number: document.getElementById("consumptionSequence").value,
+          notes: document.getElementById("consumptionNotes").value,
+        };
+
+        try {
+          const response = await fetch(`${API_BASE}/consumption`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(consumptionData),
+          });
+
+          if (response.ok) {
+            document.getElementById("consumptionForm").reset();
+            loadConsumptionEntries();
+            alert("Consumption entry added successfully!");
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error adding consumption entry: " + error.message);
+        }
+      }
+
+      async function deleteConsumptionEntry(id) {
+        if (
+          confirm("Are you sure you want to delete this consumption entry?")
+        ) {
+          try {
+            // You'll need to add a DELETE endpoint for consumption entries
+            alert(
+              "Delete functionality needs to be implemented on the backend",
+            );
+          } catch (error) {
+            alert("Error deleting consumption entry: " + error.message);
+          }
+        }
+      }
+
+      // Form event listeners
+      document
+        .getElementById("clientForm")
+        .addEventListener("submit", saveClient);
+      document
+        .getElementById("productForm")
+        .addEventListener("submit", saveProduct);
+      document
+        .getElementById("pricingForm")
+        .addEventListener("submit", savePricing);
+      document
+        .getElementById("consumptionForm")
+        .addEventListener("submit", saveConsumptionEntry);
+
+      // Initialize the application
+      document.addEventListener("DOMContentLoaded", function () {
+        loadClients();
+        loadProducts();
+      });
+    </script>
   </body>
 </html>
