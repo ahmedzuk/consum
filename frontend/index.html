@@ -387,44 +387,6 @@
       </div>
     </div>
 
-
-
-      <!-- Category Prices Management -->
-      <div style="margin-bottom: 30px">
-        <h3>Manage Category Prices</h3>
-        <select id="priceCategorySelect">
-          <option value="">Select Category to Manage Prices</option>
-        </select>
-
-        <table id="categoryPricesTable" style="margin-top: 15px">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Price (DA)</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-        <!-- save-all button appended by JS -->
-      </div>
-
-      <!-- Client Price Assignment -->
-      <div>
-        <h3>Assign Client to Price Category</h3>
-        <select id="assignClientId">
-          <option value="">Select Client</option>
-        </select>
-        <select id="assignCategorySelect">
-          <option value="">Select Price Category</option>
-        </select>
-        <button onclick="assignClientToCategory()">Assign Client</button>
-
-        <div
-          id="currentAssignment"
-          style="margin-top: 10px; font-weight: bold"
-        ></div>
-      </div>
     </div>
 
     <!-- Update your existing consumption form to show auto price -->
@@ -445,6 +407,25 @@
     </form>
 
     <script>
+      // simple toast messaging
+      function showToast(msg, duration = 3000) {
+        let toast = document.getElementById("toast");
+        if (!toast) {
+          toast = document.createElement("div");
+          toast.id = "toast";
+          toast.style.cssText =
+            "position:fixed;bottom:20px;right:20px;padding:12px 20px;background:#333;color:#fff;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s;z-index:10000;";
+          document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.style.opacity = 1;
+        setTimeout(() => {
+          toast.style.opacity = 0;
+        }, duration);
+      }
+      // override native alert to use toast
+      window.alert = showToast;
+
       // TEMPORARY: Function to reset the database (Development Only)
       async function resetDatabase() {
         if (

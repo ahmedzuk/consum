@@ -25,6 +25,23 @@ initDatabase();
 // Client Routes
 // =========================
 
+// fetch client by id (for editing)
+app.get("/api/clients/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "SELECT * FROM clients WHERE id = $1 AND is_active = true",
+      [id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // soft delete client by setting is_active = false
 app.delete("/api/clients/:id", async (req, res) => {
   try {
@@ -41,7 +58,6 @@ app.delete("/api/clients/:id", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 app.get("/api/clients", async (req, res) => {
   try {
     const result = await pool.query(
@@ -122,13 +138,28 @@ app.post("/api/products", async (req, res) => {
     const sanitizedCode = code.replace(/[^a-zA-Z0-9\-_]/g, "");
     const sanitizedUnit = unit || "T";
 
-    // Insert product
-    const productResult = await pool.query(
-      "INSERT INTO products (name, code, unit) VALUES ($1, $2, $3) RETURNING *",
-      [name, sanitizedCode, sanitizedUnit],
+    // check for existing inactive product with same name or code
+    const existing = await pool.query(
+      "SELECT * FROM products WHERE (name = $1 OR code = $2) AND is_active = false",
+      [name, sanitizedCode],
     );
-
-    const product = productResult.rows[0];
+    let product;
+    if (existing.rows.length > 0) {
+      // reactivate and update
+      const id = existing.rows[0].id;
+      const upd = await pool.query(
+        "UPDATE products SET name = $1, code = $2, unit = $3, is_active = true, updated_at = NOW() WHERE id = $4 RETURNING *",
+        [name, sanitizedCode, sanitizedUnit, id],
+      );
+      product = upd.rows[0];
+    } else {
+      // Insert product normally
+      const productResult = await pool.query(
+        "INSERT INTO products (name, code, unit) VALUES ($1, $2, $3) RETURNING *",
+        [name, sanitizedCode, sanitizedUnit],
+      );
+      product = productResult.rows[0];
+    }
 
     // Set general price if provided
     if (general_price && general_price > 0) {
