@@ -2,7 +2,6 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./database/config");
 const initDatabase = require("./database/init");
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -638,6 +637,132 @@ app.post("/api/consumption", async (req, res) => {
 });
 
 // --- All existing routes remain the same ---
+
+// ⚠️ TEMPORARY: Reset all database tables - REMOVE AFTER DEVELOPMENT
+app.post("/api/reset-database", async (req, res) => {
+  try {
+    // Drop all tables in correct order (due to foreign keys)
+    await pool.query(`
+      DROP TABLE IF EXISTS client_payments CASCADE;
+      DROP TABLE IF EXISTS consumption_entries CASCADE;
+      DROP TABLE IF EXISTS client_price_assignments CASCADE;
+      DROP TABLE IF EXISTS client_prices CASCADE;
+      DROP TABLE IF EXISTS category_prices CASCADE;
+      DROP TABLE IF EXISTS general_prices CASCADE;
+      DROP TABLE IF EXISTS price_categories CASCADE;
+      DROP TABLE IF EXISTS payment_types CASCADE;
+      DROP TABLE IF EXISTS products CASCADE;
+      DROP TABLE IF EXISTS clients CASCADE;
+      DROP TABLE IF EXISTS system_settings CASCADE;
+    `);
+
+    // Recreate all tables with latest schema
+    await pool.query(`
+      CREATE TABLE clients (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        code VARCHAR(50) UNIQUE NOT NULL,
+        address TEXT,
+        phone VARCHAR(50),
+        email VARCHAR(100),
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE products (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        code VARCHAR(50) UNIQUE NOT NULL,
+        unit VARCHAR(20) DEFAULT 'T',
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE payment_types (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(50) NOT NULL UNIQUE
+      );
+
+      CREATE TABLE price_categories (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE category_prices (
+        id SERIAL PRIMARY KEY,
+        category_id INTEGER REFERENCES price_categories(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+        price DECIMAL(10,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(category_id, product_id)
+      );
+
+      CREATE TABLE client_price_assignments (
+        id SERIAL PRIMARY KEY,
+        client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+        category_id INTEGER REFERENCES price_categories(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(client_id)
+      );
+
+      CREATE TABLE consumption_entries (
+        id SERIAL PRIMARY KEY,
+        entry_date DATE NOT NULL,
+        client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+        quantity DECIMAL(10,3) NOT NULL,
+        unit_price DECIMAL(10,2) DEFAULT 0,
+        total_amount DECIMAL(10,2) DEFAULT 0,
+        sequence_number VARCHAR(20),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE client_payments (
+        id SERIAL PRIMARY KEY,
+        client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+        payment_date DATE NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        original_amount DECIMAL(10,2) NOT NULL,
+        payment_type_id INTEGER REFERENCES payment_types(id),
+        currency VARCHAR(3) DEFAULT 'DA',
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Insert initial data
+      INSERT INTO payment_types (name) VALUES ('cash'), ('check');
+      
+      INSERT INTO price_categories (name, description) 
+      VALUES ('General', 'General pricing for all products');
+      
+      INSERT INTO products (id, name, code, unit) VALUES 
+      (1, 'SABLE 0/3', 'SBL03', 'T'),
+      (2, 'GRAVIER 3/8', 'GRV38', 'T'),
+      (3, 'GRAVIER 8/15', 'GRV815', 'T'),
+      (4, 'GRAVIER 15/25', 'GRV1525', 'T'),
+      (5, 'GRAVE CONCASSE 0/31.5', 'GRC0315', 'T'),
+      (6, 'TVC 0/25', 'TVC025', 'T'),
+      (7, 'BLOCAGE 25/50', 'BLC2550', 'T'),
+      (8, 'BLOCAGE 0/300', 'BLC0300', 'T');
+      
+      -- Insert default general prices
+      INSERT INTO category_prices (category_id, product_id, price)
+      SELECT 1, id, 100.00 FROM products;
+    `);
+
+    res.json({ message: "Database reset successfully!" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Health check
 app.get("/", (req, res) => {
