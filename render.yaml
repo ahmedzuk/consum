@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: consumption-management
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+
+databases:
+  - name: consumption-db
+    plan: free
