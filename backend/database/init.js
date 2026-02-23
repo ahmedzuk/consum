@@ -1,5 +1,11 @@
+// =========================
+// Imports
+// =========================
 const pool = require("./config");
 
+// =========================
+// Function Definition
+// =========================
 const initDatabase = async () => {
   try {
     await pool.query(`
@@ -122,4 +128,7 @@ const initDatabase = async () => {
   }
 };
 
+// =========================
+// Export
+// =========================
 module.exports = initDatabase;

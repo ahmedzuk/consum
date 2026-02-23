@@ -93,6 +93,17 @@
   </head>
   <body>
     <div class="container">
+      <!-- TEMPORARY: Database Reset Button (Development Only) -->
+      <button
+        style="background: #dc3545; margin-bottom: 20px"
+        onclick="resetDatabase()"
+      >
+        Reset Database (DEV ONLY)
+      </button>
+      <span
+        id="resetStatus"
+        style="margin-left: 10px; font-weight: bold"
+      ></span>
       <h1>Consumption Management System</h1>
 
       <div class="tabs">
@@ -102,6 +113,7 @@
         <button class="tab" onclick="showTab('consumption')">
           Consumption
         </button>
+        <button class="tab" onclick="showTab('reports')">Reports</button>
       </div>
 
       <!-- Clients Tab -->
@@ -404,6 +416,51 @@
     </form>
 
     <script>
+      // TEMPORARY: Function to reset the database (Development Only)
+      async function resetDatabase() {
+        if (
+          !confirm(
+            "Are you sure you want to reset the database? This will delete ALL data.",
+          )
+        )
+          return;
+        document.getElementById("resetStatus").textContent = "Resetting...";
+        try {
+          const response = await fetch("/api/reset-database", {
+            method: "POST",
+          });
+          if (response.ok) {
+            const data = await response.json();
+            document.getElementById("resetStatus").textContent =
+              data.message || "Database reset!";
+          } else {
+            document.getElementById("resetStatus").textContent =
+              "Reset failed!";
+          }
+        } catch (err) {
+          document.getElementById("resetStatus").textContent = "Error: " + err;
+        }
+        setTimeout(() => {
+          document.getElementById("resetStatus").textContent = "";
+        }, 5000);
+      }
+      // Populate clients for Reports tab
+      async function loadClientsForReports() {
+        try {
+          const response = await fetch(`${API_BASE}/clients`);
+          const clients = await response.json();
+          const select = document.getElementById("reportClientId");
+          select.innerHTML = '<option value="">Select Client</option>';
+          clients.forEach((client) => {
+            const option = document.createElement("option");
+            option.value = client.id;
+            option.textContent = client.name;
+            select.appendChild(option);
+          });
+        } catch (error) {
+          console.error("Error loading clients for reports:", error);
+        }
+      }
       // Base URL for API
       const API_BASE = "/api";
       // Tab switching functionality
@@ -441,6 +498,9 @@
               .toISOString()
               .split("T")[0];
             loadConsumptionEntries();
+            break;
+          case "reports":
+            loadClientsForReports();
             break;
         }
       }

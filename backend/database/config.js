@@ -1,5 +1,11 @@
+// =========================
+// Imports
+// =========================
 const { Pool } = require("pg");
 
+// =========================
+// Pool Creation
+// =========================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -7,4 +13,7 @@ const pool = new Pool({
   },
 });
 
+// =========================
+// Export
+// =========================
 module.exports = pool;
