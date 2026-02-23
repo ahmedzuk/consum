@@ -120,6 +120,9 @@
       <div id="clients" class="tab-content active">
         <h2>Clients Management</h2>
         <form id="clientForm">
+          <select id="clientPricingSet" required style="margin-bottom: 10px">
+            <option value="">Select Pricing Set</option>
+          </select>
           <input type="hidden" id="clientId" />
           <input
             type="text"
@@ -147,6 +150,7 @@
               <th>Code</th>
               <th>Phone</th>
               <th>Email</th>
+              <th>Pricing Set</th>
               <th>Actions</th>
             </tr>
           </thead>
