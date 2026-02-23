@@ -969,38 +969,6 @@
         }
       }
 
-      async function saveConsumptionEntry(event) {
-        event.preventDefault();
-        const consumptionData = {
-          entry_date: document.getElementById("consumptionDate").value,
-          client_id: document.getElementById("consumptionClientId").value,
-          product_id: document.getElementById("consumptionProductId").value,
-          quantity: document.getElementById("consumptionQuantity").value,
-          sequence_number: document.getElementById("consumptionSequence").value,
-          notes: document.getElementById("consumptionNotes").value,
-        };
-
-        try {
-          const response = await fetch(`${API_BASE}/consumption`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(consumptionData),
-          });
-
-          if (response.ok) {
-            document.getElementById("consumptionForm").reset();
-            loadConsumptionEntries();
-            alert("Consumption entry added successfully!");
-          } else {
-            const error = await response.json();
-            alert("Error: " + error.error);
-          }
-        } catch (error) {
-          alert("Error adding consumption entry: " + error.message);
-        }
-      }
 
       // Add this to your existing frontend script
 
@@ -1512,7 +1480,7 @@
           entry_date: document.getElementById("consumptionDate").value,
           client_id: document.getElementById("consumptionClientId").value,
           product_id: document.getElementById("consumptionProductId").value,
-          quantity: document.getElementById("consumptionQuantity").value,
+          quantity: parseFloat(document.getElementById("consumptionQuantity").value) || 0,
           sequence_number: document.getElementById("consumptionSequence").value,
           notes: document.getElementById("consumptionNotes").value,
         };
@@ -1524,6 +1492,8 @@
             consumptionData.product_id,
           );
           console.log("Auto-assigned price:", price);
+          consumptionData.unit_price = price;
+          consumptionData.total_amount = consumptionData.quantity * price;
 
           const response = await fetch(`${API_BASE}/consumption`, {
             method: "POST",
@@ -1540,8 +1510,8 @@
               "Consumption entry added successfully! Price: " + price + " DA",
             );
           } else {
-            const error = await response.json();
-            alert("Error: " + error.error);
+            const text = await response.text();
+            alert("Error: " + text);
           }
         } catch (error) {
           alert("Error adding consumption entry: " + error.message);

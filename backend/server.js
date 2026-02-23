@@ -24,6 +24,24 @@ initDatabase();
 // =========================
 // Client Routes
 // =========================
+
+// soft delete client by setting is_active = false
+app.delete("/api/clients/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "UPDATE clients SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING *",
+      [id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+    res.json({ message: "Client deleted" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/api/clients", async (req, res) => {
   try {
     const result = await pool.query(
@@ -59,6 +77,23 @@ app.get("/api/products", async (req, res) => {
       "SELECT * FROM products WHERE is_active = true ORDER BY id",
     );
     res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// soft delete product
+app.delete("/api/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "UPDATE products SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING *",
+      [id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    res.json({ message: "Product deleted" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -256,7 +291,26 @@ app.post("/api/consumption", async (req, res) => {
       quantity,
       sequence_number,
       notes,
+      unit_price,
+      total_amount,
     } = req.body;
+
+    // calculate price if not provided
+    let uprice = unit_price;
+    let tamount = total_amount;
+    if (uprice === undefined || tamount === undefined) {
+      try {
+        const priceResp = await fetch(
+          `${API_BASE.replace("/api", "") || "http://localhost:3000"}/api/client-product-price/${client_id}/${product_id}`,
+        );
+        const priceData = await priceResp.json();
+        uprice = priceData.price || 0;
+        tamount = uprice * quantity;
+      } catch (err) {
+        uprice = 0;
+        tamount = 0;
+      }
+    }
 
     // Sanitize inputs
     const sanitizedNotes = notes ? notes.replace(/[<>'"&]/g, "") : null;
@@ -275,8 +329,17 @@ app.post("/api/consumption", async (req, res) => {
     }
 
     const result = await pool.query(
-      "INSERT INTO consumption_entries (entry_date, client_id, product_id, quantity, sequence_number, notes) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-      [entry_date, client_id, product_id, quantity, seqNumber, sanitizedNotes],
+      "INSERT INTO consumption_entries (entry_date, client_id, product_id, quantity, unit_price, total_amount, sequence_number, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+      [
+        entry_date,
+        client_id,
+        product_id,
+        quantity,
+        uprice,
+        tamount,
+        seqNumber,
+        sanitizedNotes,
+      ],
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -644,61 +707,6 @@ app.get("/api/client-product-price/:clientId/:productId", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
-  }
-});
-
-// --- Enhanced Consumption Entry with Auto Price ---
-app.post("/api/consumption", async (req, res) => {
-  try {
-    const {
-      entry_date,
-      client_id,
-      product_id,
-      quantity,
-      sequence_number,
-      notes,
-    } = req.body;
-
-    // Get the price that should be used for this client and product
-    const priceResponse = await fetch(
-      `${API_BASE.replace("/api", "") || "http://localhost:3000"}/api/client-product-price/${client_id}/${product_id}`,
-    );
-    const priceData = await priceResponse.json();
-    const unit_price = priceData.price || 0;
-    const total_amount = quantity * unit_price;
-
-    // Sanitize inputs
-    const sanitizedNotes = notes ? notes.replace(/[<>'"&]/g, "") : null;
-
-    // Generate sequence number if not provided
-    let seqNumber = sequence_number;
-    if (!seqNumber) {
-      const dateObj = new Date();
-      const year = dateObj.getFullYear();
-      const countResult = await pool.query(
-        "SELECT COUNT(*) as count FROM consumption_entries WHERE EXTRACT(YEAR FROM entry_date) = $1",
-        [year],
-      );
-      const count = parseInt(countResult.rows[0].count) + 1;
-      seqNumber = `${String(count).padStart(3, "0")}/${year}`;
-    }
-
-    const result = await pool.query(
-      "INSERT INTO consumption_entries (entry_date, client_id, product_id, quantity, unit_price, total_amount, sequence_number, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
-      [
-        entry_date,
-        client_id,
-        product_id,
-        quantity,
-        unit_price,
-        total_amount,
-        seqNumber,
-        sanitizedNotes,
-      ],
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
   }
 });
 
