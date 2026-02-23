@@ -287,8 +287,7 @@
             <tr>
               <th>Product</th>
               <th>Price</th>
-              <th>Valid From</th>
-              <th>Valid To</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -543,6 +542,7 @@
         // Load data for the selected tab
         switch (tabName) {
           case "clients":
+            loadPricingSetsForClientForm();
             loadClients();
             break;
           case "products":
@@ -567,6 +567,23 @@
       }
 
       // Client Management
+      // Load pricing sets for client form
+      async function loadPricingSetsForClientForm() {
+        try {
+          const response = await fetch(`${API_BASE}/price-categories`);
+          const sets = await response.json();
+          const select = document.getElementById("clientPricingSet");
+          select.innerHTML = '<option value="">Select Pricing Set</option>';
+          sets.forEach((set) => {
+            const option = document.createElement("option");
+            option.value = set.id;
+            option.textContent = set.name;
+            select.appendChild(option);
+          });
+        } catch (error) {
+          console.error("Error loading pricing sets for client form:", error);
+        }
+      }
       async function loadClients() {
         try {
           const response = await fetch(`${API_BASE}/clients`);
@@ -574,16 +591,27 @@
           const tbody = document.querySelector("#clientsTable tbody");
           tbody.innerHTML = "";
 
-          clients.forEach((client) => {
+          clients.forEach(async (client) => {
+            // Fetch assigned pricing set
+            let pricingSet = "";
+            try {
+              const resp = await fetch(
+                `${API_BASE}/client-price-assignment/${client.id}`,
+              );
+              const assign = await resp.json();
+              pricingSet =
+                assign && assign.category_name ? assign.category_name : "";
+            } catch {}
             const row = tbody.insertRow();
             row.innerHTML = `
                         <td>${client.name}</td>
                         <td>${client.code}</td>
                         <td>${client.phone || ""}</td>
                         <td>${client.email || ""}</td>
+                        <td>${pricingSet}</td>
                         <td>
-                            <button onclick="editClient(${client.id})">Edit</button>
-                            <button class="delete-btn" onclick="deleteClient(${client.id})">Delete</button>
+                          <button class="action-btn" onclick="editClient(${client.id})">Edit</button>
+                          <button class="action-btn" onclick="deleteClient(${client.id})">Delete</button>
                         </td>
                     `;
           });
@@ -602,6 +630,7 @@
           phone: document.getElementById("clientPhone").value,
           email: document.getElementById("clientEmail").value,
         };
+        const pricingSetId = document.getElementById("clientPricingSet").value;
 
         try {
           const method = id ? "PUT" : "POST";
@@ -616,6 +645,20 @@
           });
 
           if (response.ok) {
+            const client = await response.json();
+            // Save pricing set assignment
+            if (pricingSetId) {
+              await fetch(`${API_BASE}/client-price-assignment`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  client_id: client.id,
+                  category_id: pricingSetId,
+                }),
+              });
+            }
             clearClientForm();
             loadClients();
             alert("Client saved successfully!");
@@ -631,7 +674,7 @@
       function editClient(id) {
         fetch(`${API_BASE}/clients/${id}`)
           .then((response) => response.json())
-          .then((client) => {
+          .then(async (client) => {
             document.getElementById("clientId").value = client.id;
             document.getElementById("clientName").value = client.name;
             document.getElementById("clientCode").value = client.code;
@@ -639,6 +682,15 @@
               client.address || "";
             document.getElementById("clientPhone").value = client.phone || "";
             document.getElementById("clientEmail").value = client.email || "";
+            // Prefill pricing set
+            try {
+              const resp = await fetch(
+                `${API_BASE}/client-price-assignment/${client.id}`,
+              );
+              const assign = await resp.json();
+              document.getElementById("clientPricingSet").value =
+                assign && assign.category_id ? assign.category_id : "";
+            } catch {}
           });
       }
 
@@ -682,8 +734,8 @@
                         <td>${product.code}</td>
                         <td>${product.unit}</td>
                         <td>
-                            <button onclick="editProduct(${product.id})">Edit</button>
-                            <button class="delete-btn" onclick="deleteProduct(${product.id})">Delete</button>
+                          <button class="action-btn" onclick="editProduct(${product.id})">Edit</button>
+                          <button class="action-btn" onclick="deleteProduct(${product.id})">Delete</button>
                         </td>
                     `;
           });
@@ -790,11 +842,16 @@
           const select = document.getElementById("pricingProductId");
           select.innerHTML = '<option value="">Select Product</option>';
 
+          // Only show products that exist in Products tab
           products.forEach((product) => {
             const option = document.createElement("option");
             option.value = product.id;
             option.textContent = product.name;
             select.appendChild(option);
+          });
+          // Disable adding new products in pricing tab
+          select.addEventListener("keydown", function (e) {
+            e.preventDefault();
           });
         } catch (error) {
           console.error("Error loading products for pricing:", error);
@@ -817,11 +874,13 @@
           prices.forEach((price) => {
             const row = tbody.insertRow();
             row.innerHTML = `
-                        <td>${price.product_name}</td>
-                        <td>${price.price}</td>
-                        <td>${price.valid_from}</td>
-                        <td>${price.valid_to || "N/A"}</td>
-                    `;
+              <td>${price.product_name}</td>
+              <td>${price.price}</td>
+              <td>
+                <button class="action-btn" onclick="editPrice(${price.id})">Edit</button>
+                <button class="action-btn" onclick="deletePrice(${price.id})">Delete</button>
+              </td>
+            `;
           });
         } catch (error) {
           console.error("Error loading client prices:", error);
@@ -926,7 +985,7 @@
                         <td>${entry.quantity}</td>
                         <td>${entry.sequence_number}</td>
                         <td>
-                            <button class="delete-btn" onclick="deleteConsumptionEntry(${entry.id})">Delete</button>
+                          <button class="action-btn" onclick="deleteConsumptionEntry(${entry.id})">Delete</button>
                         </td>
                     `;
           });
