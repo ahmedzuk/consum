@@ -93,6 +93,13 @@ const initDatabase = async () => {
       ('current_year', '2026', 'Current year for sequence numbering')
       ON CONFLICT DO NOTHING;
     `);
+    // In your initDatabase function, add this:
+    await pool.query(`
+  -- Ensure client_id 0 exists for general prices (optional)
+  INSERT INTO clients (id, name, code) VALUES (0, 'GENERAL_PRICES', 'GEN_PRICE')
+  ON CONFLICT (id) DO NOTHING;
+`);
+
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing database:", error);

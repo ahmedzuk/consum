@@ -206,6 +206,188 @@ app.get("/api/consumption/:date", async (req, res) => {
   }
 });
 
+// Add this after your existing routes:
+
+// --- PAYMENT TYPES ---
+app.get("/api/payment-types", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM payment_types ORDER BY name",
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- GET PRODUCT BY ID ---
+app.get("/api/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "SELECT * FROM products WHERE id = $1 AND is_active = true",
+      [id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- GET CLIENT PRICE FOR SPECIFIC DATE ---
+app.get(
+  "/api/prices/client/:clientId/product/:productId/date/:date",
+  async (req, res) => {
+    try {
+      const { clientId, productId, date } = req.params;
+
+      // First check for client-specific price
+      let result = await pool.query(
+        `
+      SELECT price FROM client_prices 
+      WHERE client_id = $1 AND product_id = $2 
+      AND valid_from <= $3 
+      AND (valid_to IS NULL OR valid_to >= $3)
+      AND is_active = true
+      ORDER BY valid_from DESC
+      LIMIT 1
+    `,
+        [clientId, productId, date],
+      );
+
+      if (result.rows.length > 0) {
+        return res.json(result.rows[0]);
+      }
+
+      // If no client-specific price, check general price
+      result = await pool.query(
+        `
+      SELECT price FROM client_prices 
+      WHERE client_id = 0 AND product_id = $2 
+      AND valid_from <= $3 
+      AND (valid_to IS NULL OR valid_to >= $3)
+      AND is_active = true
+      ORDER BY valid_from DESC
+      LIMIT 1
+    `,
+        [clientId, productId, date],
+      );
+
+      if (result.rows.length > 0) {
+        return res.json(result.rows[0]);
+      }
+
+      // No price found
+      res.json({ price: 0 });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+);
+
+// --- SET GENERAL PRICE ---
+app.post("/api/general-prices", async (req, res) => {
+  try {
+    const { product_id, price, valid_from, valid_to } = req.body;
+    const result = await pool.query(
+      `
+      INSERT INTO client_prices (client_id, product_id, price, valid_from, valid_to) 
+      VALUES (0, $1, $2, $3, $4) 
+      ON CONFLICT (client_id, product_id, valid_from) 
+      DO UPDATE SET price = $2, valid_to = $4, updated_at = NOW()
+      RETURNING *
+    `,
+      [
+        product_id,
+        price,
+        valid_from || new Date().toISOString().split("T")[0],
+        valid_to,
+      ],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// --- GET GENERAL PRICES ---
+app.get("/api/general-prices", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT cp.*, p.name as product_name 
+      FROM client_prices cp 
+      JOIN products p ON cp.product_id = p.id 
+      WHERE cp.client_id = 0 AND cp.is_active = true 
+      ORDER BY p.name
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- PAYMENTS ---
+app.get("/api/payments/client/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const result = await pool.query(
+      `
+      SELECT cp.*, pt.name as payment_type_name
+      FROM client_payments cp
+      JOIN payment_types pt ON cp.payment_type_id = pt.id
+      WHERE cp.client_id = $1
+      ORDER BY cp.payment_date DESC
+    `,
+      [clientId],
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/payments", async (req, res) => {
+  try {
+    const {
+      client_id,
+      payment_date,
+      amount,
+      original_amount,
+      payment_type_id,
+      notes,
+    } = req.body;
+
+    // Process amount based on payment type
+    let processedAmount = original_amount;
+    if (payment_type_id == 2) {
+      // Check payment type
+      processedAmount = Math.round((original_amount / 1.19) * 100) / 100;
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO client_payments (client_id, payment_date, amount, original_amount, payment_type_id, notes)
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+    `,
+      [
+        client_id,
+        payment_date,
+        processedAmount,
+        original_amount,
+        payment_type_id,
+        notes,
+      ],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 app.post("/api/consumption", async (req, res) => {
   try {
     const {

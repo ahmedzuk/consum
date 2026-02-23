@@ -717,6 +717,117 @@
         }
       }
 
+      // Add this to your existing frontend script
+
+      // Load general prices
+      async function loadGeneralPrices() {
+        try {
+          const response = await fetch(`${API_BASE}/general-prices`);
+          const prices = await response.json();
+          console.log("General prices:", prices);
+          // Display in UI as needed
+        } catch (error) {
+          console.error("Error loading general prices:", error);
+        }
+      }
+
+      // Set general price
+      async function setGeneralPrice(productId, price) {
+        try {
+          const response = await fetch(`${API_BASE}/general-prices`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              product_id: productId,
+              price: price,
+              valid_from: new Date().toISOString().split("T")[0],
+            }),
+          });
+
+          if (response.ok) {
+            alert("General price set successfully!");
+            loadGeneralPrices();
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error setting general price: " + error.message);
+        }
+      }
+
+      // Get price for client (with fallback to general price)
+      async function getClientPrice(clientId, productId, date) {
+        try {
+          const response = await fetch(
+            `${API_BASE}/prices/client/${clientId}/product/${productId}/date/${date}`,
+          );
+          const priceData = await response.json();
+          return priceData.price;
+        } catch (error) {
+          console.error("Error getting client price:", error);
+          return 0;
+        }
+      }
+
+      // Modify product saving to include general price setting
+      async function saveProductWithGeneralPrice(event) {
+        event.preventDefault();
+        const id = document.getElementById("productId").value;
+        const productData = {
+          name: document.getElementById("productName").value,
+          code: document.getElementById("productCode").value,
+          unit: document.getElementById("productUnit").value,
+        };
+
+        try {
+          // Save product first
+          const method = id ? "PUT" : "POST";
+          const url = id
+            ? `${API_BASE}/products/${id}`
+            : `${API_BASE}/products`;
+
+          const response = await fetch(url, {
+            method: method,
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(productData),
+          });
+
+          if (response.ok) {
+            const product = await response.json();
+
+            // Optionally set general price
+            const generalPrice = prompt(
+              "Set general price for this product (or cancel to skip):",
+            );
+            if (generalPrice && !isNaN(generalPrice)) {
+              await setGeneralPrice(product.id, parseFloat(generalPrice));
+            }
+
+            clearProductForm();
+            loadProducts();
+            alert("Product saved successfully!");
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error saving product: " + error.message);
+        }
+      }
+
+      // Update the product form submit handler
+      document
+        .getElementById("productForm")
+        .removeEventListener("submit", saveProduct);
+      document
+        .getElementById("productForm")
+        .addEventListener("submit", saveProductWithGeneralPrice);
+
       async function deleteConsumptionEntry(id) {
         if (
           confirm("Are you sure you want to delete this consumption entry?")
