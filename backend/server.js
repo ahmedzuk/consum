@@ -479,6 +479,39 @@ app.put("/api/price-categories/:id", async (req, res) => {
 });
 
 // --- Category Prices Routes ---
+// Unified endpoint to set prices for all products in a pricing set (category)
+app.post("/api/prices", async (req, res) => {
+  try {
+    const { category_id, prices } = req.body; // prices: [{product_id, price}]
+    if (!category_id || !Array.isArray(prices)) {
+      return res
+        .status(400)
+        .json({ error: "category_id and prices array required" });
+    }
+    // Only allow prices for existing products
+    const productIdsResult = await pool.query("SELECT id FROM products");
+    const validProductIds = new Set(productIdsResult.rows.map((r) => r.id));
+    for (const { product_id, price } of prices) {
+      if (!validProductIds.has(product_id)) continue;
+      await pool.query(
+        `INSERT INTO category_prices (category_id, product_id, price)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (category_id, product_id)
+         DO UPDATE SET price = $3, updated_at = NOW()`,
+        [category_id, product_id, price],
+      );
+    }
+    res.json({ message: "Prices updated for category." });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to trigger recalculation of previous consumption for a category (stub)
+app.post("/api/prices/recalculate", async (req, res) => {
+  // TODO: Implement recalculation logic based on category_id and optional date range
+  res.json({ message: "Recalculation triggered (not yet implemented)." });
+});
 app.get("/api/category-prices/:categoryId", async (req, res) => {
   try {
     const { categoryId } = req.params;
