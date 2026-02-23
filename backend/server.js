@@ -407,6 +407,237 @@ app.get("/api/sequence/next", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+// Add these new routes for the enhanced pricing system
+
+// --- Price Categories Routes ---
+app.get("/api/price-categories", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM price_categories ORDER BY name",
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/price-categories", async (req, res) => {
+  try {
+    const { name, description } = req.body;
+    const result = await pool.query(
+      "INSERT INTO price_categories (name, description) VALUES ($1, $2) RETURNING *",
+      [name, description],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.put("/api/price-categories/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description } = req.body;
+    const result = await pool.query(
+      "UPDATE price_categories SET name = $1, description = $2 WHERE id = $3 RETURNING *",
+      [name, description, id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Price category not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// --- Category Prices Routes ---
+app.get("/api/category-prices/:categoryId", async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const result = await pool.query(
+      `
+      SELECT cp.*, p.name as product_name, p.code as product_code
+      FROM category_prices cp
+      JOIN products p ON cp.product_id = p.id
+      WHERE cp.category_id = $1
+      ORDER BY p.id
+    `,
+      [categoryId],
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/category-prices", async (req, res) => {
+  try {
+    const { category_id, product_id, price } = req.body;
+    const result = await pool.query(
+      `
+      INSERT INTO category_prices (category_id, product_id, price) 
+      VALUES ($1, $2, $3) 
+      ON CONFLICT (category_id, product_id) 
+      DO UPDATE SET price = $3, updated_at = NOW()
+      RETURNING *
+    `,
+      [category_id, product_id, price],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.put("/api/category-prices/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { price } = req.body;
+    const result = await pool.query(
+      "UPDATE category_prices SET price = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+      [price, id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Category price not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// --- Client Price Assignment Routes ---
+app.get("/api/client-price-assignment/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const result = await pool.query(
+      `
+      SELECT cpa.*, pc.name as category_name
+      FROM client_price_assignments cpa
+      JOIN price_categories pc ON cpa.category_id = pc.id
+      WHERE cpa.client_id = $1
+    `,
+      [clientId],
+    );
+    res.json(result.rows[0] || null);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/client-price-assignment", async (req, res) => {
+  try {
+    const { client_id, category_id } = req.body;
+    const result = await pool.query(
+      `
+      INSERT INTO client_price_assignments (client_id, category_id) 
+      VALUES ($1, $2) 
+      ON CONFLICT (client_id) 
+      DO UPDATE SET category_id = $2, updated_at = NOW()
+      RETURNING *
+    `,
+      [client_id, category_id],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// --- Get Product Price for Client ---
+app.get("/api/client-product-price/:clientId/:productId", async (req, res) => {
+  try {
+    const { clientId, productId } = req.params;
+
+    // Get client's assigned price category
+    const assignmentResult = await pool.query(
+      "SELECT category_id FROM client_price_assignments WHERE client_id = $1",
+      [clientId],
+    );
+
+    let categoryId = 1; // Default to General category
+    if (assignmentResult.rows.length > 0) {
+      categoryId = assignmentResult.rows[0].category_id;
+    }
+
+    // Get price for that category and product
+    const priceResult = await pool.query(
+      "SELECT price FROM category_prices WHERE category_id = $1 AND product_id = $2",
+      [categoryId, productId],
+    );
+
+    if (priceResult.rows.length > 0) {
+      res.json({ price: priceResult.rows[0].price });
+    } else {
+      // Fallback to General category price
+      const generalPriceResult = await pool.query(
+        "SELECT price FROM category_prices WHERE category_id = 1 AND product_id = $1",
+        [productId],
+      );
+      res.json({ price: generalPriceResult.rows[0]?.price || 0 });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Enhanced Consumption Entry with Auto Price ---
+app.post("/api/consumption", async (req, res) => {
+  try {
+    const {
+      entry_date,
+      client_id,
+      product_id,
+      quantity,
+      sequence_number,
+      notes,
+    } = req.body;
+
+    // Get the price that should be used for this client and product
+    const priceResponse = await fetch(
+      `${API_BASE.replace("/api", "") || "http://localhost:3000"}/api/client-product-price/${client_id}/${product_id}`,
+    );
+    const priceData = await priceResponse.json();
+    const unit_price = priceData.price || 0;
+    const total_amount = quantity * unit_price;
+
+    // Sanitize inputs
+    const sanitizedNotes = notes ? notes.replace(/[<>'"&]/g, "") : null;
+
+    // Generate sequence number if not provided
+    let seqNumber = sequence_number;
+    if (!seqNumber) {
+      const dateObj = new Date();
+      const year = dateObj.getFullYear();
+      const countResult = await pool.query(
+        "SELECT COUNT(*) as count FROM consumption_entries WHERE EXTRACT(YEAR FROM entry_date) = $1",
+        [year],
+      );
+      const count = parseInt(countResult.rows[0].count) + 1;
+      seqNumber = `${String(count).padStart(3, "0")}/${year}`;
+    }
+
+    const result = await pool.query(
+      "INSERT INTO consumption_entries (entry_date, client_id, product_id, quantity, unit_price, total_amount, sequence_number, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+      [
+        entry_date,
+        client_id,
+        product_id,
+        quantity,
+        unit_price,
+        total_amount,
+        seqNumber,
+        sanitizedNotes,
+      ],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// --- All existing routes remain the same ---
 
 // Health check
 app.get("/", (req, res) => {

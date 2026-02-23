@@ -315,6 +315,94 @@
       <button type="button" onclick="clearProductForm()">Clear</button>
     </form>
 
+    <!-- Add this Pricing tab to your HTML -->
+    <div id="pricing" class="tab-content">
+      <h2>Price Management</h2>
+
+      <!-- Price Categories Management -->
+      <div style="margin-bottom: 30px">
+        <h3>Price Categories</h3>
+        <form id="categoryForm">
+          <input
+            type="text"
+            id="categoryName"
+            placeholder="Category Name (e.g., General, Discounted, VIP)"
+            required
+          />
+          <input
+            type="text"
+            id="categoryDescription"
+            placeholder="Description"
+          />
+          <button type="submit">Add Category</button>
+        </form>
+
+        <table id="categoriesTable" style="margin-top: 15px">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Category Prices Management -->
+      <div style="margin-bottom: 30px">
+        <h3>Manage Category Prices</h3>
+        <select id="priceCategorySelect">
+          <option value="">Select Category to Manage Prices</option>
+        </select>
+
+        <table id="categoryPricesTable" style="margin-top: 15px">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Price (DA)</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Client Price Assignment -->
+      <div>
+        <h3>Assign Client to Price Category</h3>
+        <select id="assignClientId">
+          <option value="">Select Client</option>
+        </select>
+        <select id="priceCategorySelect">
+          <option value="">Select Price Category</option>
+        </select>
+        <button onclick="assignClientToCategory()">Assign Client</button>
+
+        <div
+          id="currentAssignment"
+          style="margin-top: 10px; font-weight: bold"
+        ></div>
+      </div>
+    </div>
+
+    <!-- Update your existing consumption form to show auto price -->
+    <form id="consumptionForm">
+      <!-- ... existing fields ... -->
+      <div
+        id="autoPriceDisplay"
+        style="
+          background: #e7f3ff;
+          padding: 10px;
+          border-radius: 5px;
+          margin: 10px 0;
+        "
+      >
+        Auto-assigned price will appear here when you select client and product
+      </div>
+      <!-- ... rest of form ... -->
+    </form>
+
     <script>
       // Base URL for API
       const API_BASE = "/api";
@@ -1043,6 +1131,224 @@
           }
         }
       }
+
+      // Add these functions to your frontend
+
+      // Load price categories
+      async function loadPriceCategories() {
+        try {
+          const response = await fetch(`${API_BASE}/price-categories`);
+          const categories = await response.json();
+
+          // Populate price category dropdowns
+          const categorySelect = document.getElementById("priceCategorySelect");
+          if (categorySelect) {
+            categorySelect.innerHTML =
+              '<option value="">Select Category</option>';
+            categories.forEach((cat) => {
+              const option = document.createElement("option");
+              option.value = cat.id;
+              option.textContent = cat.name;
+              categorySelect.appendChild(option);
+            });
+          }
+
+          return categories;
+        } catch (error) {
+          console.error("Error loading price categories:", error);
+          return [];
+        }
+      }
+
+      // Load category prices
+      async function loadCategoryPrices(categoryId) {
+        if (!categoryId) return;
+
+        try {
+          const response = await fetch(
+            `${API_BASE}/category-prices/${categoryId}`,
+          );
+          const prices = await response.json();
+
+          // Display in price management section
+          const tbody = document.querySelector("#categoryPricesTable tbody");
+          if (tbody) {
+            tbody.innerHTML = "";
+            prices.forEach((price) => {
+              const row = tbody.insertRow();
+              row.innerHTML = `
+          <td>${price.product_name}</td>
+          <td><input type="number" value="${price.price}" data-id="${price.id}" class="price-input" step="0.01"></td>
+          <td>
+            <button onclick="updateCategoryPrice(${price.id}, this)">Update</button>
+          </td>
+        `;
+            });
+          }
+        } catch (error) {
+          console.error("Error loading category prices:", error);
+        }
+      }
+
+      // Update category price
+      async function updateCategoryPrice(priceId, buttonElement) {
+        const input =
+          buttonElement.parentElement.parentElement.querySelector(
+            ".price-input",
+          );
+        const newPrice = parseFloat(input.value);
+
+        if (isNaN(newPrice)) {
+          alert("Please enter a valid price");
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `${API_BASE}/category-prices/${priceId}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ price: newPrice }),
+            },
+          );
+
+          if (response.ok) {
+            alert("Price updated successfully!");
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error updating price: " + error.message);
+        }
+      }
+
+      // Assign client to price category
+      async function assignClientToCategory() {
+        const clientId = document.getElementById("assignClientId").value;
+        const categoryId = document.getElementById("priceCategorySelect").value;
+
+        if (!clientId || !categoryId) {
+          alert("Please select both client and category");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${API_BASE}/client-price-assignment`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              client_id: clientId,
+              category_id: categoryId,
+            }),
+          });
+
+          if (response.ok) {
+            alert("Client assigned to category successfully!");
+            loadClientPriceAssignment(clientId);
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error assigning client: " + error.message);
+        }
+      }
+
+      // Load client's current price assignment
+      async function loadClientPriceAssignment(clientId) {
+        try {
+          const response = await fetch(
+            `${API_BASE}/client-price-assignment/${clientId}`,
+          );
+          const assignment = await response.json();
+
+          if (assignment) {
+            document.getElementById("currentAssignment").innerHTML =
+              `Currently assigned to: <strong>${assignment.category_name}</strong>`;
+          } else {
+            document.getElementById("currentAssignment").innerHTML =
+              "Currently assigned to: <strong>General (default)</strong>";
+          }
+        } catch (error) {
+          console.error("Error loading client assignment:", error);
+        }
+      }
+
+      // Get product price for client (used when creating consumption entry)
+      async function getClientProductPrice(clientId, productId) {
+        try {
+          const response = await fetch(
+            `${API_BASE}/client-product-price/${clientId}/${productId}`,
+          );
+          const priceData = await response.json();
+          return priceData.price || 0;
+        } catch (error) {
+          console.error("Error getting client product price:", error);
+          return 0;
+        }
+      }
+
+      // Enhanced consumption entry with auto price
+      async function saveConsumptionEntry(event) {
+        event.preventDefault();
+        const consumptionData = {
+          entry_date: document.getElementById("consumptionDate").value,
+          client_id: document.getElementById("consumptionClientId").value,
+          product_id: document.getElementById("consumptionProductId").value,
+          quantity: document.getElementById("consumptionQuantity").value,
+          sequence_number: document.getElementById("consumptionSequence").value,
+          notes: document.getElementById("consumptionNotes").value,
+        };
+
+        try {
+          // Get price before submitting
+          const price = await getClientProductPrice(
+            consumptionData.client_id,
+            consumptionData.product_id,
+          );
+          console.log("Auto-assigned price:", price);
+
+          const response = await fetch(`${API_BASE}/consumption`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(consumptionData),
+          });
+
+          if (response.ok) {
+            document.getElementById("consumptionForm").reset();
+            loadConsumptionEntries();
+            alert(
+              "Consumption entry added successfully! Price: " + price + " DA",
+            );
+          } else {
+            const error = await response.json();
+            alert("Error: " + error.error);
+          }
+        } catch (error) {
+          alert("Error adding consumption entry: " + error.message);
+        }
+      }
+
+      // Initialize pricing system when page loads
+      document.addEventListener("DOMContentLoaded", function () {
+        loadPriceCategories();
+
+        // Add event listener for category selection
+        const categorySelect = document.getElementById("priceCategorySelect");
+        if (categorySelect) {
+          categorySelect.addEventListener("change", function () {
+            loadCategoryPrices(this.value);
+          });
+        }
+      });
 
       // Form event listeners
       document
