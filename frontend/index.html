@@ -3,7 +3,7 @@
   <head>
     <!-- Modern Google Font -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Roboto:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
     <meta charset="UTF-8" />
@@ -11,7 +11,7 @@
     <title>Consumption Management System</title>
     <style>
       body {
-        font-family: "Inter", Arial, sans-serif;
+        font-family: "Roboto", "Inter", "Helvetica Neue", Arial, sans-serif;
         margin: 0;
         background: linear-gradient(120deg, #f8fafc 0%, #e0e7ef 100%);
         min-height: 100vh;
@@ -135,13 +135,19 @@
       tr:last-child td {
         border-bottom: none;
       }
+      tbody tr:hover {
+        background: #f1f5f9;
+      }
       .delete-btn {
         background: linear-gradient(90deg, #ef4444 0%, #b91c1c 100%);
+        color: #fff;
         padding: 7px 16px;
         border-radius: 5px;
         font-size: 0.95rem;
         font-weight: 500;
         margin-left: 4px;
+        border: none;
+        cursor: pointer;
       }
       .delete-btn:hover {
         background: linear-gradient(90deg, #b91c1c 0%, #ef4444 100%);
@@ -291,12 +297,6 @@
             step="0.01"
             required
           />
-          <input type="date" id="pricingValidFrom" required />
-          <input
-            type="date"
-            id="pricingValidTo"
-            placeholder="Valid To (optional)"
-          />
           <button type="submit">Set Price</button>
         </form>
 
@@ -387,60 +387,7 @@
       </div>
     </div>
 
-    <!-- Update your product form -->
-    <form id="productForm">
-      <input type="hidden" id="productId" />
-      <input type="text" id="productName" placeholder="Product Name" required />
-      <input type="text" id="productCode" placeholder="Product Code" required />
-      <input
-        type="number"
-        id="productGeneralPrice"
-        placeholder="General Price"
-        step="0.01"
-      />
-      <input
-        type="text"
-        id="productUnit"
-        placeholder="Unit (default: T)"
-        value="T"
-      />
-      <button type="submit">Save Product</button>
-      <button type="button" onclick="clearProductForm()">Clear</button>
-    </form>
 
-    <!-- Add this Pricing tab to your HTML -->
-    <div id="pricing" class="tab-content">
-      <h2>Price Management</h2>
-
-      <!-- Price Categories Management -->
-      <div style="margin-bottom: 30px">
-        <h3>Price Categories</h3>
-        <form id="categoryForm">
-          <input
-            type="text"
-            id="categoryName"
-            placeholder="Category Name (e.g., General, Discounted, VIP)"
-            required
-          />
-          <input
-            type="text"
-            id="categoryDescription"
-            placeholder="Description"
-          />
-          <button type="submit">Add Category</button>
-        </form>
-
-        <table id="categoriesTable" style="margin-top: 15px">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Description</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
 
       <!-- Category Prices Management -->
       <div style="margin-bottom: 30px">
@@ -633,7 +580,7 @@
                         <td>${pricingSet}</td>
                         <td>
                           <button class="action-btn" onclick="editClient(${client.id})">Edit</button>
-                          <button class="action-btn" onclick="deleteClient(${client.id})">Delete</button>
+                          <button class="delete-btn" onclick="deleteClient(${client.id})">Delete</button>
                         </td>
                     `;
           });
@@ -727,8 +674,8 @@
               loadClients();
               alert("Client deleted successfully!");
             } else {
-              const error = await response.json();
-              alert("Error: " + error.error);
+              const text = await response.text();
+              alert("Error deleting client: " + text);
             }
           } catch (error) {
             alert("Error deleting client: " + error.message);
@@ -757,7 +704,7 @@
                         <td>${product.unit}</td>
                         <td>
                           <button class="action-btn" onclick="editProduct(${product.id})">Edit</button>
-                          <button class="action-btn" onclick="deleteProduct(${product.id})">Delete</button>
+                          <button class="delete-btn" onclick="deleteProduct(${product.id})">Delete</button>
                         </td>
                     `;
           });
@@ -824,8 +771,8 @@
               loadProducts();
               alert("Product deleted successfully!");
             } else {
-              const error = await response.json();
-              alert("Error: " + error.error);
+              const text = await response.text();
+              alert("Error deleting product: " + text);
             }
           } catch (error) {
             alert("Error deleting product: " + error.message);
@@ -908,7 +855,7 @@
               <td>${price.price}</td>
               <td>
                 <button class="action-btn" onclick="editPrice(${price.id})">Edit</button>
-                <button class="action-btn" onclick="deletePrice(${price.id})">Delete</button>
+                <button class="delete-btn" onclick="deletePrice(${price.id})">Delete</button>
               </td>
             `;
           });
@@ -923,8 +870,6 @@
           client_id: document.getElementById("pricingClientId").value,
           product_id: document.getElementById("pricingProductId").value,
           price: document.getElementById("pricingPrice").value,
-          valid_from: document.getElementById("pricingValidFrom").value,
-          valid_to: document.getElementById("pricingValidTo").value || null,
         };
 
         try {
@@ -1015,7 +960,7 @@
                         <td>${entry.quantity}</td>
                         <td>${entry.sequence_number}</td>
                         <td>
-                          <button class="action-btn" onclick="deleteConsumptionEntry(${entry.id})">Delete</button>
+                          <button class="delete-btn" onclick="deleteConsumptionEntry(${entry.id})">Delete</button>
                         </td>
                     `;
           });
