@@ -407,24 +407,37 @@
     </form>
 
     <script>
-      // simple toast messaging
-      function showToast(msg, duration = 3000) {
-        let toast = document.getElementById("toast");
-        if (!toast) {
-          toast = document.createElement("div");
-          toast.id = "toast";
-          toast.style.cssText =
-            "position:fixed;bottom:20px;right:20px;padding:12px 20px;background:#333;color:#fff;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s;z-index:10000;";
-          document.body.appendChild(toast);
+      // modal-style alert for better UX
+      function showAlert(msg) {
+        let overlay = document.getElementById("alertOverlay");
+        if (!overlay) {
+          overlay = document.createElement("div");
+          overlay.id = "alertOverlay";
+          overlay.style.cssText =
+            "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:10000;";
+          const box = document.createElement("div");
+          box.id = "alertBox";
+          box.style.cssText =
+            "background:#fff;padding:24px 32px;border-radius:8px;max-width:400px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.2);font-family:inherit;font-size:1rem;";
+          const msgEl = document.createElement("div");
+          msgEl.id = "alertMsg";
+          box.appendChild(msgEl);
+          const btn = document.createElement("button");
+          btn.textContent = "OK";
+          btn.style.cssText =
+            "margin-top:20px;padding:8px 20px;background:#2563eb;color:#fff;border:none;border-radius:4px;cursor:pointer;";
+          btn.onclick = () => {
+            overlay.style.display = "none";
+          };
+          box.appendChild(btn);
+          overlay.appendChild(box);
+          document.body.appendChild(overlay);
         }
-        toast.textContent = msg;
-        toast.style.opacity = 1;
-        setTimeout(() => {
-          toast.style.opacity = 0;
-        }, duration);
+        document.getElementById("alertMsg").textContent = msg;
+        overlay.style.display = "flex";
       }
-      // override native alert to use toast
-      window.alert = showToast;
+      // override native alert to use modal
+      window.alert = showAlert;
 
       // TEMPORARY: Function to reset the database (Development Only)
       async function resetDatabase() {
