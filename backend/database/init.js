@@ -118,6 +118,9 @@ const initDatabase = async () => {
         code = EXCLUDED.code, 
         unit = EXCLUDED.unit;
 
+      -- Reset products_id_seq to max(id) to avoid duplicate key errors
+      SELECT setval('products_id_seq', (SELECT MAX(id) FROM products));
+
       -- Insert default general prices (all products get default prices)
       INSERT INTO category_prices (category_id, product_id, price)
       SELECT 1, id, 100.00 FROM products
