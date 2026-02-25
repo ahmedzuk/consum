@@ -67,6 +67,26 @@ const initDatabase = async () => {
         UNIQUE(client_id)
       );
 
+      -- Table for default/general prices (one per product)
+      CREATE TABLE IF NOT EXISTS general_prices (
+        id SERIAL PRIMARY KEY,
+        product_id INTEGER REFERENCES products(id) ON DELETE CASCADE UNIQUE,
+        price DECIMAL(10,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Table for client-specific override prices
+      CREATE TABLE IF NOT EXISTS client_prices (
+        id SERIAL PRIMARY KEY,
+        client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+        price DECIMAL(10,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(client_id, product_id)
+      );
+
       CREATE TABLE IF NOT EXISTS consumption_entries (
         id SERIAL PRIMARY KEY,
         entry_date DATE NOT NULL,
@@ -120,7 +140,8 @@ const initDatabase = async () => {
         unit = EXCLUDED.unit;
 
       -- Reset products_id_seq to max(id) to avoid duplicate key errors
-      SELECT setval('products_id_seq', (SELECT MAX(id) FROM products));
+      -- (use coalesce in case table is empty so sequence isn't set to NULL)
+      SELECT setval('products_id_seq', COALESCE((SELECT MAX(id) FROM products), 1));
 
       -- Insert default general prices (all products get default prices)
       INSERT INTO category_prices (category_id, product_id, price)
