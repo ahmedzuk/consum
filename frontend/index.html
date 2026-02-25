@@ -767,10 +767,18 @@
         fetch(`${API_BASE}/products/${id}`)
           .then((response) => response.json())
           .then((product) => {
+            // Show JS alert window for editing
+            const newName = prompt("Edit product name:", product.name);
+            if (newName === null) return; // Cancelled
+            const newCode = prompt("Edit product code:", product.code);
+            if (newCode === null) return;
+            const newUnit = prompt("Edit product unit:", product.unit);
+            if (newUnit === null) return;
+            // Update form fields
             document.getElementById("productId").value = product.id;
-            document.getElementById("productName").value = product.name;
-            document.getElementById("productCode").value = product.code;
-            document.getElementById("productUnit").value = product.unit;
+            document.getElementById("productName").value = newName;
+            document.getElementById("productCode").value = newCode;
+            document.getElementById("productUnit").value = newUnit;
           });
       }
 
