@@ -163,14 +163,15 @@ app.post("/api/products", async (req, res) => {
       [name, sanitizedCode],
     );
     let product;
+    const priceVal = general_price && general_price > 0 ? general_price : 0;
     if (existing.rows.length > 0) {
       // If inactive, reactivate and update; if active, return error
       const existingProduct = existing.rows[0];
       if (!existingProduct.is_active) {
         const id = existingProduct.id;
         const upd = await pool.query(
-          "UPDATE products SET name = $1, code = $2, unit = $3, is_active = true, updated_at = NOW() WHERE id = $4 RETURNING *",
-          [name, sanitizedCode, sanitizedUnit, id],
+          "UPDATE products SET name = $1, code = $2, unit = $3, price = $4, is_active = true, updated_at = NOW() WHERE id = $5 RETURNING *",
+          [name, sanitizedCode, sanitizedUnit, priceVal, id],
         );
         product = upd.rows[0];
       } else {
@@ -181,19 +182,13 @@ app.post("/api/products", async (req, res) => {
     } else {
       // Insert product normally
       const productResult = await pool.query(
-        "INSERT INTO products (name, code, unit) VALUES ($1, $2, $3) RETURNING *",
-        [name, sanitizedCode, sanitizedUnit],
+        "INSERT INTO products (name, code, unit, price) VALUES ($1, $2, $3, $4) RETURNING *",
+        [name, sanitizedCode, sanitizedUnit, priceVal],
       );
       product = productResult.rows[0];
     }
 
-    // Set general price if provided
-    if (general_price && general_price > 0) {
-      await pool.query(
-        "INSERT INTO general_prices (product_id, price) VALUES ($1, $2) ON CONFLICT (product_id) DO UPDATE SET price = $2, updated_at = NOW()",
-        [product.id, general_price],
-      );
-    }
+    // No need to set general_prices table, price is now in products table
 
     res.status(201).json(product);
   } catch (error) {
