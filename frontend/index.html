@@ -155,6 +155,27 @@
     </style>
   </head>
   <body>
+        <!-- Product Modal -->
+        <div id="productModal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.3);z-index:10000;align-items:center;justify-content:center;">
+          <div style="background:#fff;padding:32px 40px;border-radius:12px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.18);">
+            <h2 id="productModalTitle">Edit Product</h2>
+            <form id="productModalForm">
+              <input type="hidden" id="modalProductId" />
+              <label>Name</label>
+              <input type="text" id="modalProductName" required />
+              <label>Code</label>
+              <input type="text" id="modalProductCode" required />
+              <label>Unit</label>
+              <input type="text" id="modalProductUnit" value="T" required />
+              <label>General Price</label>
+              <input type="number" id="modalProductGeneralPrice" min="0" step="0.01" required />
+              <div style="margin-top:18px;text-align:right;">
+                <button type="submit" style="background:#2563eb;">Save</button>
+                <button type="button" onclick="closeProductModal()" style="background:#aaa;margin-left:10px;">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
     <div class="container">
       <!-- TEMPORARY: Database Reset Button (Development Only) -->
       <button
@@ -255,6 +276,15 @@
             id="productUnit"
             placeholder="Unit (default: T)"
             value="T"
+            required
+          />
+          <input
+            type="number"
+            id="productGeneralPrice"
+            placeholder="General Price"
+            min="0"
+            step="0.01"
+            required
           />
           <button type="submit">Save Product</button>
           <button type="button" onclick="clearProductForm()">Clear</button>
@@ -767,11 +797,51 @@
         fetch(`${API_BASE}/products/${id}`)
           .then((response) => response.json())
           .then((product) => {
-            document.getElementById("productId").value = product.id;
-            document.getElementById("productName").value = product.name;
-            document.getElementById("productCode").value = product.code;
-            document.getElementById("productUnit").value = product.unit;
+            openProductModal(product);
           });
+            // Modal logic
+            function openProductModal(product = {}) {
+              document.getElementById("productModal").style.display = "flex";
+              document.getElementById("productModalTitle").textContent = product.id ? "Edit Product" : "Add Product";
+              document.getElementById("modalProductId").value = product.id || "";
+              document.getElementById("modalProductName").value = product.name || "";
+              document.getElementById("modalProductCode").value = product.code || "";
+              document.getElementById("modalProductUnit").value = product.unit || "T";
+              document.getElementById("modalProductGeneralPrice").value = product.general_price || "";
+            }
+            function closeProductModal() {
+              document.getElementById("productModal").style.display = "none";
+            }
+            document.getElementById("productModalForm").onsubmit = async function(e) {
+              e.preventDefault();
+              const id = document.getElementById("modalProductId").value;
+              const productData = {
+                name: document.getElementById("modalProductName").value,
+                code: document.getElementById("modalProductCode").value,
+                unit: document.getElementById("modalProductUnit").value,
+                general_price: parseFloat(document.getElementById("modalProductGeneralPrice").value) || 0,
+              };
+              try {
+                const method = id ? "PUT" : "POST";
+                const url = id ? `${API_BASE}/products/${id}` : `${API_BASE}/products`;
+                const response = await fetch(url, {
+                  method: method,
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(productData),
+                });
+                if (response.ok) {
+                  closeProductModal();
+                  clearProductForm();
+                  loadProducts();
+                  alert("Product saved successfully!");
+                } else {
+                  const error = await response.json();
+                  alert("Error: " + error.error);
+                }
+              } catch (error) {
+                alert("Error saving product: " + error.message);
+              }
+            };
       }
 
       async function deleteProduct(id) {
@@ -800,6 +870,13 @@
         document.getElementById("productName").value = "";
         document.getElementById("productCode").value = "";
         document.getElementById("productUnit").value = "T";
+        document.getElementById("productGeneralPrice").value = "";
+        // Also reset modal fields
+        document.getElementById("modalProductId").value = "";
+        document.getElementById("modalProductName").value = "";
+        document.getElementById("modalProductCode").value = "";
+        document.getElementById("modalProductUnit").value = "T";
+        document.getElementById("modalProductGeneralPrice").value = "";
       }
 
       // Pricing Management
