@@ -8,6 +8,8 @@ const pool = require("./config");
 // =========================
 const initDatabase = async () => {
   try {
+    // use a transaction so the schema is either fully applied or not at all
+    await pool.query("BEGIN");
     await pool.query(`
       -- Create tables with proper constraints
       CREATE TABLE IF NOT EXISTS clients (
@@ -139,17 +141,35 @@ const initDatabase = async () => {
         code = EXCLUDED.code, 
         unit = EXCLUDED.unit;
 
-      -- Reset products_id_seq to max(id) to avoid duplicate key errors
-      -- (use coalesce in case table is empty so sequence isn't set to NULL)
+      -- Reset all id sequences to current maxima to avoid duplicate-key errors
+      -- (if table empty we set sequence to 1)
+      SELECT setval('clients_id_seq', COALESCE((SELECT MAX(id) FROM clients), 1));
       SELECT setval('products_id_seq', COALESCE((SELECT MAX(id) FROM products), 1));
+      SELECT setval('payment_types_id_seq', COALESCE((SELECT MAX(id) FROM payment_types), 1));
+      SELECT setval('price_categories_id_seq', COALESCE((SELECT MAX(id) FROM price_categories), 1));
+      SELECT setval('category_prices_id_seq', COALESCE((SELECT MAX(id) FROM category_prices), 1));
+      SELECT setval('client_price_assignments_id_seq', COALESCE((SELECT MAX(id) FROM client_price_assignments), 1));
+      SELECT setval('general_prices_id_seq', COALESCE((SELECT MAX(id) FROM general_prices), 1));
+      SELECT setval('client_prices_id_seq', COALESCE((SELECT MAX(id) FROM client_prices), 1));
+      SELECT setval('consumption_entries_id_seq', COALESCE((SELECT MAX(id) FROM consumption_entries), 1));
+      SELECT setval('client_payments_id_seq', COALESCE((SELECT MAX(id) FROM client_payments), 1));
 
       -- Insert default general prices (all products get default prices)
+      INSERT INTO general_prices (product_id, price)
+      SELECT id, 100.00 FROM products
+      ON CONFLICT (product_id) DO NOTHING;
+
+      -- Also seed the "General" category with the same base prices so pricing
+      -- queries using categories will have data available.
       INSERT INTO category_prices (category_id, product_id, price)
-      SELECT 1, id, 100.00 FROM products
-      ON CONFLICT DO NOTHING;
+      SELECT 1, gp.product_id, gp.price
+      FROM general_prices gp
+      ON CONFLICT (category_id, product_id) DO NOTHING;
     `);
+    await pool.query("COMMIT");
     console.log("Database initialized successfully");
   } catch (error) {
+    await pool.query("ROLLBACK");
     console.error("Error initializing database:", error);
   }
 };

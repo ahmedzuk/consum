@@ -188,7 +188,14 @@ app.post("/api/products", async (req, res) => {
       product = productResult.rows[0];
     }
 
-    // No need to set general_prices table, price is now in products table
+    // ensure default/general price table stays in sync
+    if (priceVal > 0 && product.id) {
+      await pool.query(
+        `INSERT INTO general_prices (product_id, price) VALUES ($1, $2)
+         ON CONFLICT (product_id) DO UPDATE SET price = $2, updated_at = NOW()`,
+        [product.id, priceVal],
+      );
+    }
 
     res.status(201).json(product);
   } catch (error) {
@@ -319,10 +326,20 @@ app.get("/api/consumption/:date", async (req, res) => {
     const { date } = req.params;
     const result = await pool.query(
       `
-      SELECT ce.*, c.name as client_name, p.name as product_name, p.unit
+      SELECT 
+        ce.*, 
+        c.name as client_name, 
+        p.name as product_name, 
+        p.unit,
+        COALESCE(cp.price, catp.price, gp.price, 0) as unit_price,
+        ce.quantity * COALESCE(cp.price, catp.price, gp.price, 0) as total_amount
       FROM consumption_entries ce
       JOIN clients c ON ce.client_id = c.id
       JOIN products p ON ce.product_id = p.id
+      LEFT JOIN client_prices cp ON cp.client_id = ce.client_id AND cp.product_id = ce.product_id
+      LEFT JOIN client_price_assignments cpa ON cpa.client_id = ce.client_id
+      LEFT JOIN category_prices catp ON catp.category_id = cpa.category_id AND catp.product_id = ce.product_id
+      LEFT JOIN general_prices gp ON gp.product_id = ce.product_id
       WHERE ce.entry_date = $1
       ORDER BY c.name, p.id
     `,
@@ -347,21 +364,13 @@ app.post("/api/consumption", async (req, res) => {
       total_amount,
     } = req.body;
 
-    // calculate price if not provided
+    // calculate price if not provided, using unified helper
     let uprice = unit_price;
     let tamount = total_amount;
     if (uprice === undefined || tamount === undefined) {
-      try {
-        const priceResp = await fetch(
-          `${API_BASE.replace("/api", "") || "http://localhost:3000"}/api/client-product-price/${client_id}/${product_id}`,
-        );
-        const priceData = await priceResp.json();
-        uprice = priceData.price || 0;
-        tamount = uprice * quantity;
-      } catch (err) {
-        uprice = 0;
-        tamount = 0;
-      }
+      const priceVal = await getClientProductPrice(client_id, product_id);
+      uprice = priceVal;
+      tamount = uprice * quantity;
     }
 
     // Sanitize inputs
@@ -448,12 +457,14 @@ app.get("/api/reports/client/:clientId", async (req, res) => {
           p.name as product_name,
           p.unit,
           ce.quantity,
-          COALESCE(cp.price, gp.price, 0) as unit_price,
-          ce.quantity * COALESCE(cp.price, gp.price, 0) as total_amount,
+          COALESCE(cp.price, catp.price, gp.price, 0) as unit_price,
+          ce.quantity * COALESCE(cp.price, catp.price, gp.price, 0) as total_amount,
           ce.notes
         FROM consumption_entries ce
         JOIN products p ON ce.product_id = p.id
         LEFT JOIN client_prices cp ON cp.client_id = ce.client_id AND cp.product_id = ce.product_id
+        LEFT JOIN client_price_assignments cpa ON cpa.client_id = ce.client_id
+        LEFT JOIN category_prices catp ON catp.category_id = cpa.category_id AND catp.product_id = ce.product_id
         LEFT JOIN general_prices gp ON gp.product_id = ce.product_id
         WHERE ce.client_id = $1 
         AND ce.entry_date BETWEEN $2 AND $3
@@ -468,15 +479,17 @@ app.get("/api/reports/client/:clientId", async (req, res) => {
           p.name as product_name,
           p.unit,
           SUM(ce.quantity) as total_quantity,
-          COALESCE(cp.price, gp.price, 0) as unit_price,
-          SUM(ce.quantity) * COALESCE(cp.price, gp.price, 0) as total_amount
+          COALESCE(cp.price, catp.price, gp.price, 0) as unit_price,
+          SUM(ce.quantity) * COALESCE(cp.price, catp.price, gp.price, 0) as total_amount
         FROM consumption_entries ce
         JOIN products p ON ce.product_id = p.id
         LEFT JOIN client_prices cp ON cp.client_id = ce.client_id AND cp.product_id = ce.product_id
+        LEFT JOIN client_price_assignments cpa ON cpa.client_id = ce.client_id
+        LEFT JOIN category_prices catp ON catp.category_id = cpa.category_id AND catp.product_id = ce.product_id
         LEFT JOIN general_prices gp ON gp.product_id = ce.product_id
         WHERE ce.client_id = $1 
         AND ce.entry_date BETWEEN $2 AND $3
-        GROUP BY DATE_TRUNC('month', ce.entry_date), p.name, p.unit, cp.price, gp.price
+        GROUP BY DATE_TRUNC('month', ce.entry_date), p.name, p.unit, cp.price, catp.price, gp.price
         ORDER BY month, p.id
       `;
       params = [clientId, start_date, end_date];
@@ -498,9 +511,11 @@ app.get("/api/reports/client-summary/:clientId", async (req, res) => {
     const consumptionResult = await pool.query(
       `
       SELECT 
-        SUM(ce.quantity * COALESCE(cp.price, gp.price, 0)) as total_consumption_value
+        SUM(ce.quantity * COALESCE(cp.price, catp.price, gp.price, 0)) as total_consumption_value
       FROM consumption_entries ce
       LEFT JOIN client_prices cp ON cp.client_id = ce.client_id AND cp.product_id = ce.product_id
+      LEFT JOIN client_price_assignments cpa ON cpa.client_id = ce.client_id
+      LEFT JOIN category_prices catp ON catp.category_id = cpa.category_id AND catp.product_id = ce.product_id
       LEFT JOIN general_prices gp ON gp.product_id = ce.product_id
       WHERE ce.client_id = $1 
       AND ce.entry_date BETWEEN $2 AND $3
@@ -758,38 +773,29 @@ app.post("/api/client-price-assignment", async (req, res) => {
   }
 });
 
+// helper used throughout for consistent pricing logic
+const getClientProductPrice = async (clientId, productId) => {
+  const result = await pool.query(
+    `
+      SELECT COALESCE(cp.price, catp.price, gp.price, 0) AS price
+      FROM products p
+      LEFT JOIN client_prices cp ON cp.client_id = $1 AND cp.product_id = $2
+      LEFT JOIN client_price_assignments cpa ON cpa.client_id = $1
+      LEFT JOIN category_prices catp ON catp.category_id = cpa.category_id AND catp.product_id = $2
+      LEFT JOIN general_prices gp ON gp.product_id = $2
+      WHERE p.id = $2
+    `,
+    [clientId, productId],
+  );
+  return result.rows[0]?.price || 0;
+};
+
 // --- Get Product Price for Client ---
 app.get("/api/client-product-price/:clientId/:productId", async (req, res) => {
   try {
     const { clientId, productId } = req.params;
-
-    // Get client's assigned price category
-    const assignmentResult = await pool.query(
-      "SELECT category_id FROM client_price_assignments WHERE client_id = $1",
-      [clientId],
-    );
-
-    let categoryId = 1; // Default to General category
-    if (assignmentResult.rows.length > 0) {
-      categoryId = assignmentResult.rows[0].category_id;
-    }
-
-    // Get price for that category and product
-    const priceResult = await pool.query(
-      "SELECT price FROM category_prices WHERE category_id = $1 AND product_id = $2",
-      [categoryId, productId],
-    );
-
-    if (priceResult.rows.length > 0) {
-      res.json({ price: priceResult.rows[0].price });
-    } else {
-      // Fallback to General category price
-      const generalPriceResult = await pool.query(
-        "SELECT price FROM category_prices WHERE category_id = 1 AND product_id = $1",
-        [productId],
-      );
-      res.json({ price: generalPriceResult.rows[0]?.price || 0 });
-    }
+    const price = await getClientProductPrice(clientId, productId);
+    res.json({ price });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
