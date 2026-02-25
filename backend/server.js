@@ -157,20 +157,27 @@ app.post("/api/products", async (req, res) => {
     const sanitizedCode = code.replace(/[^a-zA-Z0-9\-_]/g, "");
     const sanitizedUnit = unit || "T";
 
-    // check for existing inactive product with same name or code
+    // check for existing product with same name or code (active or inactive)
     const existing = await pool.query(
-      "SELECT * FROM products WHERE (name = $1 OR code = $2) AND is_active = false",
+      "SELECT * FROM products WHERE name = $1 OR code = $2",
       [name, sanitizedCode],
     );
     let product;
     if (existing.rows.length > 0) {
-      // reactivate and update
-      const id = existing.rows[0].id;
-      const upd = await pool.query(
-        "UPDATE products SET name = $1, code = $2, unit = $3, is_active = true, updated_at = NOW() WHERE id = $4 RETURNING *",
-        [name, sanitizedCode, sanitizedUnit, id],
-      );
-      product = upd.rows[0];
+      // If inactive, reactivate and update; if active, return error
+      const existingProduct = existing.rows[0];
+      if (!existingProduct.is_active) {
+        const id = existingProduct.id;
+        const upd = await pool.query(
+          "UPDATE products SET name = $1, code = $2, unit = $3, is_active = true, updated_at = NOW() WHERE id = $4 RETURNING *",
+          [name, sanitizedCode, sanitizedUnit, id],
+        );
+        product = upd.rows[0];
+      } else {
+        return res
+          .status(400)
+          .json({ error: "Product with this name or code already exists." });
+      }
     } else {
       // Insert product normally
       const productResult = await pool.query(

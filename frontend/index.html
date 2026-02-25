@@ -253,8 +253,8 @@
           <input
             type="text"
             id="productUnit"
-            placeholder="Unit (default: m³)"
-            value="m³"
+            placeholder="Unit (default: T)"
+            value="T"
           />
           <button type="submit">Save Product</button>
           <button type="button" onclick="clearProductForm()">Clear</button>
@@ -797,6 +797,7 @@
       function clearProductForm() {
         document.getElementById("productForm").reset();
         document.getElementById("productId").value = "";
+        document.getElementById("productUnit").value = "T";
       }
 
       // Pricing Management
