@@ -1,3 +1,13 @@
+      // Ensure modal closes reliably
+      document.addEventListener("DOMContentLoaded", function() {
+        const cancelBtn = document.querySelector('#productModalForm button[type="button"]');
+        if (cancelBtn) {
+          cancelBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            closeProductModal();
+          });
+        }
+      });
 <!doctype html>
 <html lang="en">
   <head>

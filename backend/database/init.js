@@ -27,6 +27,7 @@ const initDatabase = async () => {
         name VARCHAR(100) NOT NULL UNIQUE,
         code VARCHAR(50) UNIQUE NOT NULL,
         unit VARCHAR(20) DEFAULT 'T',
+        price DECIMAL(10,2) NOT NULL DEFAULT 0,
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
